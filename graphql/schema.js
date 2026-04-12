@@ -1,17 +1,16 @@
-import { GraphQLObjectType, GraphQLSchema, GraphQLString } from "graphql";
+// graphql/schema.js
+import { GraphQLSchema, GraphQLObjectType } from "graphql";
+import { RootQuery } from "./queries/index.js";
+import { AuthMutations } from "./mutations/auth.js";
 
-const RootQuery = new GraphQLObjectType({
-  name: "RootQueryType",
+const Mutation = new GraphQLObjectType({
+  name: "Mutation",
   fields: {
-    hello: {
-      type: GraphQLString,
-      resolve() {
-        return "Hello from HairMaster API!";
-      }
-    }
-  }
+    ...AuthMutations,
+  },
 });
 
 export default new GraphQLSchema({
-  query: RootQuery
+  query: RootQuery,
+  mutation: Mutation,
 });
