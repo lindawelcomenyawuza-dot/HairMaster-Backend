@@ -2,18 +2,33 @@
 import {
   GraphQLObjectType,
   GraphQLString,
-  GraphQLID,
+  GraphQLInt,
+  GraphQLBoolean,
 } from "graphql";
 
 export const UserType = new GraphQLObjectType({
   name: "User",
   fields: () => ({
-    id: {
-      type: GraphQLID,
-      resolve: (parent) => parent._id.toString(), // 🔥 FIX
-    },
+    id: { type: GraphQLString },
     name: { type: GraphQLString },
     email: { type: GraphQLString },
-    token: { type: GraphQLString },
+    accountType: { type: GraphQLString },
+    avatar: { type: GraphQLString },
+    bio: { type: GraphQLString },
+
+    followers: { type: GraphQLInt },
+    following: { type: GraphQLInt },
+
+    location: { type: GraphQLString },
+    country: { type: GraphQLString },
+    currency: { type: GraphQLString },
+
+    businessName: { type: GraphQLString },
+
+    posts: { type: GraphQLInt },
+    totalSpent: { type: GraphQLInt },
+    discountTokens: { type: GraphQLInt },
+
+    token: { type: GraphQLString }, // for auth
   }),
 });
