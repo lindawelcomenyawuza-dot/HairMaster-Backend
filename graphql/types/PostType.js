@@ -10,7 +10,7 @@ import {
 export const PostType = new GraphQLObjectType({
   name: "Post",
   fields: () => ({
-    id: { type: GraphQLString },
+    id: { type: GraphQLString, resolve: (post) => post._id.toString() },
     userId: { type: GraphQLString },
     userName: { type: GraphQLString },
     userAvatar: { type: GraphQLString },

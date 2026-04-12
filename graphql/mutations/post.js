@@ -31,4 +31,22 @@ export const PostMutations = {
       return post;
     },
   },
+  toggleLike: {
+  type: PostType,
+  args: {
+    postId: { type: GraphQLString },
+  },
+
+  async resolve(_, { postId }) {
+    const post = await Post.findById(postId);
+
+    if (!post) throw new Error("Post not found");
+
+    post.likes = (post.likes || 0) + 1;
+
+    await post.save();
+
+    return post;
+  },
+},
 };
