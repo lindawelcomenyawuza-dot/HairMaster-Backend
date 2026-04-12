@@ -15,10 +15,11 @@ const PORT = process.env.PORT || 10000;
 // ✅ CORS FIX (IMPORTANT)
 app.use(cors({
   origin: [
-    "http://localhost:3000",
-    "http://localhost:3001",
-    "https://hair-master-app-web.vercel.app" // ✅ YOUR REAL FRONTEND
-  ],
+  "http://localhost:3000",
+  "http://localhost:3001",
+  "http://localhost:5000", // ✅ ADD THIS
+  "https://hair-master-app-web.vercel.app"
+],
   methods: ["GET", "POST", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"],
   credentials: true
