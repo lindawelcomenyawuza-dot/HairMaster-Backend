@@ -17,8 +17,10 @@ app.use(cors({
   origin: [
     "http://localhost:3000",
     "http://localhost:3001",
-    "https://your-vercel-domain.vercel.app"
+    "https://hair-master-app-web.vercel.app" // ✅ YOUR REAL FRONTEND
   ],
+  methods: ["GET", "POST", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
   credentials: true
 }));
 
