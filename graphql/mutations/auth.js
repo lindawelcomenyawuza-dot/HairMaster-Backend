@@ -1,22 +1,23 @@
 // graphql/mutations/auth.js
-import {
-  GraphQLString,
-  GraphQLObjectType,
-} from "graphql";
+import { GraphQLString } from "graphql";
 
 import User from "../../models/User.js";
 import { UserType } from "../types/UserType.js";
+import { AuthType } from "../types/AuthType.js";
+
 import { hashPassword, comparePassword } from "../../utils/hash.js";
 import { generateToken } from "../../utils/token.js";
 
 export const AuthMutations = {
   register: {
-    type: UserType,
+    type: AuthType,
+
     args: {
       name: { type: GraphQLString },
       email: { type: GraphQLString },
       password: { type: GraphQLString },
     },
+
     async resolve(_, args) {
       const { name, email, password } = args;
 
@@ -33,16 +34,21 @@ export const AuthMutations = {
 
       const token = generateToken(user);
 
-      return { ...user._doc, token };
+      return {
+        token,
+        user,
+      };
     },
   },
 
   login: {
-    type: UserType,
+    type: AuthType,
+
     args: {
       email: { type: GraphQLString },
       password: { type: GraphQLString },
     },
+
     async resolve(_, { email, password }) {
       const user = await User.findOne({ email });
       if (!user) throw new Error("User not found");
@@ -52,7 +58,10 @@ export const AuthMutations = {
 
       const token = generateToken(user);
 
-      return { ...user._doc, token };
+      return {
+        token,
+        user,
+      };
     },
   },
 };
