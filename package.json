@@ -1,14 +1,17 @@
 {
   "name": "hairmaster-backend",
   "version": "1.0.0",
-  "main": "index.js",
+  "type": "module",
+  "main": "server.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "seed": "node seed/seedData.js"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "description": "",
+  "description": "HairMaster GraphQL Backend",
   "dependencies": {
     "bcryptjs": "^3.0.3",
     "cors": "^2.8.6",

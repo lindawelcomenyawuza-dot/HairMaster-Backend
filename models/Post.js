@@ -1,65 +1,49 @@
-// models/Post.js
-import mongoose from "mongoose";
+import mongoose from 'mongoose';
 
-const ProductSchema = new mongoose.Schema({
+const productSchema = new mongoose.Schema({
   name: String,
   price: Number,
   type: String,
 });
 
-const CommentSchema = new mongoose.Schema({
-  id: String,
-  userId: String,
+const commentSchema = new mongoose.Schema({
+  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   userName: String,
   userAvatar: String,
-  content: String,
+  content: { type: String, required: true },
+  likes: { type: Number, default: 0 },
+  likedBy: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
   createdAt: { type: Date, default: Date.now },
 });
 
-const TaggedUserSchema = new mongoose.Schema({
-  id: String,
-  name: String,
-});
+const postSchema = new mongoose.Schema({
+  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  userName: String,
+  userAvatar: String,
+  accountType: { type: String, enum: ['personal', 'business'] },
+  image: { type: String, required: true },
+  images: [String],
+  video: String,
+  styleName: { type: String, required: true },
+  barberName: String,
+  barberShop: String,
+  location: String,
+  price: { type: Number, default: 0 },
+  currency: { type: String, default: 'USD' },
+  rating: { type: Number, default: 0 },
+  likes: { type: Number, default: 0 },
+  likedBy: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+  savedBy: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+  description: String,
+  gender: { type: String, enum: ['male', 'female', 'unisex'] },
+  products: [productSchema],
+  hashtags: [String],
+  taggedUsers: [{ userId: String, name: String }],
+  comments: [commentSchema],
+  sharesCount: { type: Number, default: 0 },
+  isSponsored: { type: Boolean, default: false },
+  isStory: { type: Boolean, default: false },
+  storyExpiresAt: Date,
+}, { timestamps: true });
 
-const PostSchema = new mongoose.Schema(
-  {
-    userId: String,
-    userName: String,
-    userAvatar: String,
-    accountType: String,
-
-    image: String,
-    images: [String],
-
-    styleName: String,
-    barberName: String,
-    barberShop: String,
-
-    location: String,
-
-    price: Number,
-    currency: { type: String, default: "USD" },
-
-    rating: { type: Number, default: 0 },
-    likes: { type: Number, default: 0 },
-    isLiked: { type: Boolean, default: false },
-    isSaved: { type: Boolean, default: false },
-
-    description: String,
-    gender: {
-      type: String,
-      enum: ["male", "female", "unisex"],
-    },
-
-    products: [ProductSchema],
-    hashtags: [String],
-    taggedUsers: [TaggedUserSchema],
-
-    comments: [CommentSchema],
-    commentsCount: { type: Number, default: 0 },
-    sharesCount: { type: Number, default: 0 },
-  },
-  { timestamps: true }
-);
-
-export default mongoose.model("Post", PostSchema);
+export default mongoose.model('Post', postSchema);

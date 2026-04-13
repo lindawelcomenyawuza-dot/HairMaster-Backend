@@ -1,44 +1,21 @@
-// models/Booking.js
-import mongoose from "mongoose";
+import mongoose from 'mongoose';
 
-const BookingSchema = new mongoose.Schema(
-  {
-    clientId: {
-      type: String,
-      required: true,
-    },
+const bookingSchema = new mongoose.Schema({
+  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  postId: { type: mongoose.Schema.Types.ObjectId, ref: 'Post' },
+  styleName: { type: String, required: true },
+  barberName: String,
+  barberId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  location: String,
+  price: { type: Number, required: true },
+  currency: { type: String, default: 'USD' },
+  depositAmount: Number,
+  depositPaid: { type: Boolean, default: false },
+  date: { type: Date, required: true },
+  time: { type: String, required: true },
+  status: { type: String, enum: ['upcoming', 'completed', 'cancelled'], default: 'upcoming' },
+  paymentMethod: { type: String, enum: ['online', 'offline'], default: 'online' },
+  paymentStatus: { type: String, enum: ['pending', 'partial', 'completed'], default: 'pending' },
+}, { timestamps: true });
 
-    businessId: {
-      type: String,
-      required: true,
-    },
-
-    postId: {
-      type: String,
-    },
-
-    styleName: String,
-    barberName: String,
-    location: String,
-
-    price: Number,
-    currency: { type: String, default: "USD" },
-
-    depositAmount: Number,
-    depositPaid: { type: Boolean, default: false },
-
-    date: Date,
-    time: String,
-
-    status: {
-      type: String,
-      enum: ["upcoming", "completed", "cancelled"],
-      default: "upcoming",
-    },
-
-    paymentMethod: String,
-    paymentStatus: String,
-  },
-  { timestamps: true }
-);
-export default mongoose.model("Booking", BookingSchema);
+export default mongoose.model('Booking', bookingSchema);
