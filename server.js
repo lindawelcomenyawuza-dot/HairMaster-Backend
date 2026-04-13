@@ -9,6 +9,7 @@ dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 10000;
+const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL;
 
 app.use(cors({
   origin: true,
@@ -32,5 +33,6 @@ app.use('/graphql', graphqlHTTP((req) => ({
 })));
 
 app.get('/health', (_, res) => res.json({ status: 'ok' }));
+
 
 app.listen(PORT, '0.0.0.0', () => console.log(`Backend running on port ${PORT}`));
