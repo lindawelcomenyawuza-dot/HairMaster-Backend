@@ -1,8 +1,8 @@
 // graphql/type/BookingType.js
+// graphql/types/BookingType.js
 import {
   GraphQLObjectType,
   GraphQLString,
-  GraphQLID,
   GraphQLFloat,
   GraphQLBoolean,
 } from "graphql";
@@ -10,8 +10,10 @@ import {
 export const BookingType = new GraphQLObjectType({
   name: "Booking",
   fields: () => ({
-    id: { type: GraphQLID },
-    userId: { type: GraphQLString },
+    id: { type: GraphQLString },
+
+    clientId: { type: GraphQLString },
+    businessId: { type: GraphQLString },
     postId: { type: GraphQLString },
 
     styleName: { type: GraphQLString },
@@ -28,7 +30,6 @@ export const BookingType = new GraphQLObjectType({
     time: { type: GraphQLString },
 
     status: { type: GraphQLString },
-
     paymentMethod: { type: GraphQLString },
     paymentStatus: { type: GraphQLString },
   }),

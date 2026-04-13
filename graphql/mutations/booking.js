@@ -1,15 +1,16 @@
 // graphql/mutations/booking.js
-import { GraphQLNonNull, GraphQLString, GraphQLFloat, GraphQLBoolean } from "graphql";
+import { GraphQLString, GraphQLFloat, GraphQLBoolean } from "graphql";
 import Booking from "../../models/Booking.js";
-import { BookingType } from "../types/BookingType.js";
 import { verifyToken } from "../../utils/token.js";
+import { BookingType } from "../types/BookingType.js";
 
 export const BookingMutations = {
   createBooking: {
     type: BookingType,
 
     args: {
-      postId: { type: new GraphQLNonNull(GraphQLString) },
+      businessId: { type: GraphQLString },
+      postId: { type: GraphQLString },
 
       styleName: { type: GraphQLString },
       barberName: { type: GraphQLString },
@@ -21,7 +22,7 @@ export const BookingMutations = {
       depositAmount: { type: GraphQLFloat },
       depositPaid: { type: GraphQLBoolean },
 
-      date: { type: GraphQLString }, // ISO string
+      date: { type: GraphQLString },
       time: { type: GraphQLString },
 
       paymentMethod: { type: GraphQLString },
@@ -35,30 +36,13 @@ export const BookingMutations = {
       const token = auth.split(" ")[1];
       const decoded = verifyToken(token);
 
-      const booking = new Booking({
-        userId: decoded.id,
-
-        postId: args.postId,
-        styleName: args.styleName,
-        barberName: args.barberName,
-        location: args.location,
-
-        price: args.price,
-        currency: args.currency || "USD",
-
-        depositAmount: args.depositAmount,
-        depositPaid: args.depositPaid || false,
-
-        date: args.date,
-        time: args.time,
-
-        status: "upcoming",
-
-        paymentMethod: args.paymentMethod,
-        paymentStatus: args.paymentStatus || "pending",
+      const booking = await Booking.create({
+        clientId: decoded.id,
+        businessId: args.businessId,
+        ...args,
       });
 
-      return await booking.save();
+      return booking;
     },
   },
 };
