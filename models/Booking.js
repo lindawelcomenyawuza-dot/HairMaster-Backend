@@ -3,8 +3,19 @@ import mongoose from "mongoose";
 
 const BookingSchema = new mongoose.Schema(
   {
-    userId: String,
-    postId: String,
+    clientId: {
+      type: String,
+      required: true,
+    },
+
+    businessId: {
+      type: String,
+      required: true,
+    },
+
+    postId: {
+      type: String,
+    },
 
     styleName: String,
     barberName: String,
@@ -30,5 +41,3 @@ const BookingSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
-
-export default mongoose.model("Booking", BookingSchema);
