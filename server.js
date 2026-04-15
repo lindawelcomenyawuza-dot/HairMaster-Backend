@@ -9,14 +9,31 @@ dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 10000;
-const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL;
+
+const allowedOrigins = [
+  'http://localhost:3000',
+  'http://localhost:8081',
+  'http://192.168.0.151:8081',
+  'exp://192.168.0.151:8081',
+  'https://hairmaster-backend-1.onrender.com'
+];
 
 app.use(cors({
-  origin: true,
-  methods: ['GET', 'POST', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
+  origin: function (origin, callback) {
+    if (!origin) return callback(null, true); // mobile / curl
+
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    } else {
+      console.log('Blocked by CORS:', origin);
+      return callback(new Error('Not allowed by CORS'));
+    }
+  },
   credentials: true,
 }));
+
+// ✅ VERY IMPORTANT (you were missing this)
+app.options('*', cors());
 
 app.use(express.json());
 
@@ -34,5 +51,6 @@ app.use('/graphql', graphqlHTTP((req) => ({
 
 app.get('/health', (_, res) => res.json({ status: 'ok' }));
 
-
-app.listen(PORT, '0.0.0.0', () => console.log(`Backend running on port ${PORT}`));
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`Backend running on port ${PORT}`);
+});
