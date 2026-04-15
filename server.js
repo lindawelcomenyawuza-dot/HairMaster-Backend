@@ -1,3 +1,4 @@
+// server.js
 import express from 'express';
 import mongoose from 'mongoose';
 import { graphqlHTTP } from 'express-graphql';
@@ -33,7 +34,7 @@ app.use(cors({
 }));
 
 // ✅ VERY IMPORTANT (you were missing this)
-app.options('*', cors());
+app.options('/*', cors());
 
 app.use(express.json());
 
