@@ -21,7 +21,7 @@ const allowedOrigins = [
 
 app.use(cors({
   origin: function (origin, callback) {
-    if (!origin) return callback(null, true); // mobile / curl
+    if (!origin) return callback(null, true);
 
     if (allowedOrigins.includes(origin)) {
       return callback(null, true);
@@ -33,8 +33,9 @@ app.use(cors({
   credentials: true,
 }));
 
+
+
 // ✅ VERY IMPORTANT (you were missing this)
-app.options('/*', cors());
 
 app.use(express.json());
 
