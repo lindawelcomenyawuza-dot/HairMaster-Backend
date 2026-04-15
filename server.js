@@ -16,7 +16,8 @@ const allowedOrigins = [
   'http://localhost:8081',
   'http://192.168.0.151:8081',
   'exp://192.168.0.151:8081',
-  'https://hairmaster-backend-1.onrender.com'
+  'https://hairmaster-backend-1.onrender.com',
+  'https://hair-master-web.vercel.app'
 ];
 
 app.use(cors({
