@@ -57,4 +57,7 @@ const userSchema = new mongoose.Schema({
   googleId: { type: String, sparse: true },
 }, { timestamps: true });
 
+userSchema.index({ accountType: 1, businessName: 1, location: 1 });
+userSchema.index({ businessName: 'text', name: 'text', location: 'text' });
+
 export default mongoose.model('User', userSchema);

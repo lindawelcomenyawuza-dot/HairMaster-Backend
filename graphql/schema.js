@@ -94,6 +94,20 @@ const typeDefs = `
     isLiked: Boolean!
   }
 
+  type SalonSearchResult {
+    id: ID!
+    name: String!
+    city: String
+    logo: String
+  }
+
+  type SalonStaffMember {
+    id: ID!
+    displayName: String!
+    avatar: String
+    role: String!
+  }
+
   type Post {
     id: ID!
     type: String!
@@ -109,6 +123,12 @@ const typeDefs = `
     styleName: String!
     barberName: String
     barberShop: String
+    salonId: String
+    salonName: String
+    stylistId: String
+    stylistName: String
+    stylistAvatar: String
+    salonLogo: String
     location: String
     barberId: String
     bookingId: String
@@ -240,6 +260,8 @@ const typeDefs = `
     chat(id: ID!): Chat
     businessProducts(businessId: ID!): [Product]
     myProducts: [Product]
+    searchSalons(search: String!): [SalonSearchResult]
+    getSalonStaff(salonId: ID!): [SalonStaffMember]
   }
 
   type Mutation {
@@ -254,6 +276,8 @@ const typeDefs = `
       styleName: String!
       barberName: String
       barberShop: String
+      salonId: ID
+      stylistId: ID
       location: String
       price: Float
       currency: String
@@ -265,6 +289,9 @@ const typeDefs = `
     repost(originalPostId: ID!): Post
     toggleLike(postId: ID!): Post
     addComment(postId: ID!, content: String!): Post
+    editComment(postId: ID!, commentId: ID!, content: String!): Post
+    deleteComment(postId: ID!, commentId: ID!): Post
+    reportComment(postId: ID!, commentId: ID!, reason: String): Boolean
     toggleSavePost(postId: ID!): Post
     createBooking(
       postId: String
@@ -330,7 +357,7 @@ function formatId(doc) {
   return obj;
 }
 
-function formatPost(post, requestingUserId) {
+async function formatPost(post, requestingUserId) {
   const obj = post.toObject ? post.toObject() : { ...post };
   obj.id = obj._id.toString();
   delete obj._id;
@@ -344,21 +371,37 @@ function formatPost(post, requestingUserId) {
   obj.type = obj.type || 'portfolio';
 
   if (obj.barberId) obj.barberId = obj.barberId.toString();
+  if (obj.salonId) obj.salonId = obj.salonId.toString();
   if (obj.bookingId) obj.bookingId = obj.bookingId.toString();
   if (obj.originalPostId) obj.originalPostId = obj.originalPostId.toString();
+
+  const referencedUserIds = [
+    obj.userId,
+    ...(obj.comments || []).map(c => c.userId),
+  ].filter(Boolean).map(id => id.toString());
+  const users = referencedUserIds.length
+    ? await User.find({ _id: { $in: [...new Set(referencedUserIds)] } })
+    : [];
+  const usersById = new Map(users.map(user => [user._id.toString(), user]));
+  const postUser = usersById.get(obj.userId?.toString());
 
   obj.imageKey = obj.imageKey || getObjectKey(obj.image);
   obj.image = getPublicMediaUrl(obj.imageKey || obj.image);
   obj.images = (obj.images || []).map((image, index) => getPublicMediaUrl((obj.imageKeys || [])[index] || image));
-  obj.userAvatarKey = obj.userAvatarKey || getObjectKey(obj.userAvatar);
-  obj.userAvatar = getPublicMediaUrl(obj.userAvatarKey || obj.userAvatar);
+  obj.userName = postUser?.name || obj.userName || '';
+  obj.userAvatarKey = postUser?.avatarKey || obj.userAvatarKey || getObjectKey(postUser?.avatar || obj.userAvatar);
+  obj.userAvatar = getPublicMediaUrl(obj.userAvatarKey || postUser?.avatar || obj.userAvatar) || '';
+  obj.salonName = obj.salonName || obj.barberShop || '';
+  obj.stylistName = obj.stylistName || obj.barberName || '';
+  obj.salonLogo = getPublicMediaUrl(obj.salonLogo);
+  obj.stylistAvatar = getPublicMediaUrl(obj.stylistAvatar);
 
   obj.comments = (obj.comments || []).map(c => ({
     id: c._id.toString(),
     postId: obj.id,
     userId: c.userId.toString(),
-    userName: c.userName,
-    userAvatar: getPublicMediaUrl(c.userAvatar),
+    userName: usersById.get(c.userId.toString())?.name || c.userName || '',
+    userAvatar: getPublicMediaUrl(usersById.get(c.userId.toString())?.avatarKey || usersById.get(c.userId.toString())?.avatar || c.userAvatar) || '',
     content: c.content,
     createdAt: c.createdAt ? c.createdAt.toISOString() : new Date().toISOString(),
     likes: c.likes || 0,
@@ -374,6 +417,41 @@ function formatPost(post, requestingUserId) {
   delete obj.savedBy;
   delete obj.products;
   return obj;
+}
+
+function formatSalon(user) {
+  return {
+    id: user._id.toString(),
+    name: user.businessName || user.name,
+    city: user.location || '',
+    logo: getPublicMediaUrl(user.avatarKey || user.avatar),
+  };
+}
+
+function formatSalonStaffMember(staffMember) {
+  return {
+    id: staffMember._id ? staffMember._id.toString() : staffMember.id,
+    displayName: staffMember.name || 'Unnamed stylist',
+    avatar: getPublicMediaUrl(staffMember.avatar),
+    role: staffMember.role || 'stylist',
+  };
+}
+
+async function getValidSalonAndStaff(salonId, stylistId) {
+  if (!salonId || !mongoose.Types.ObjectId.isValid(salonId)) {
+    throw new Error('A valid salon is required');
+  }
+  if (!stylistId) {
+    throw new Error('A valid stylist is required');
+  }
+
+  const salon = await User.findOne({ _id: salonId, accountType: 'business' });
+  if (!salon) throw new Error('Selected salon was not found');
+
+  const stylist = (salon.staff || []).find(member => member._id?.toString() === stylistId);
+  if (!stylist) throw new Error('Selected stylist is not registered with this salon');
+
+  return { salon, stylist };
 }
 
 function formatUser(user, requestingUserId, followingIds) {
@@ -534,7 +612,7 @@ const root = {
       ];
     }
     const posts = await Post.find(query).sort({ createdAt: -1 });
-    return posts.map(p => formatPost(p, authUser?.id));
+    return Promise.all(posts.map(p => formatPost(p, authUser?.id)));
   },
 
   post: async ({ id }, { req }) => {
@@ -547,7 +625,7 @@ const root = {
   userPosts: async ({ userId }, { req }) => {
     const authUser = getUser(req);
     const posts = await Post.find({ userId }).sort({ createdAt: -1 });
-    return posts.map(p => formatPost(p, authUser?.id));
+    return Promise.all(posts.map(p => formatPost(p, authUser?.id)));
   },
 
   bookings: async (_, { req }) => {
@@ -585,7 +663,7 @@ const root = {
       conversations.push({
         userId: otherId,
         userName: otherUser.name,
-        userAvatar: otherUser.avatar || '',
+        userAvatar: getPublicMediaUrl(otherUser.avatarKey || otherUser.avatar),
         lastMessage: lastMsg.content,
         lastMessageTime: lastMsg.createdAt.toISOString(),
         unreadCount,
@@ -655,6 +733,28 @@ const root = {
     return products.map(formatProduct);
   },
 
+  searchSalons: async ({ search }) => {
+    const term = (search || '').trim();
+    if (term.length < 2) return [];
+    const re = new RegExp(term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+    const salons = await User.find({
+      accountType: 'business',
+      $or: [
+        { businessName: re },
+        { name: re },
+        { location: re },
+      ],
+    }).sort({ businessName: 1, name: 1 }).limit(12);
+    return salons.map(formatSalon);
+  },
+
+  getSalonStaff: async ({ salonId }) => {
+    if (!mongoose.Types.ObjectId.isValid(salonId)) throw new Error('Invalid salon');
+    const salon = await User.findOne({ _id: salonId, accountType: 'business' });
+    if (!salon) throw new Error('Salon not found');
+    return (salon.staff || []).map(formatSalonStaffMember);
+  },
+
   register: async ({ name, email, password, accountType }) => {
     const existing = await User.findOne({ email });
     if (existing) throw new Error('Email already in use');
@@ -689,6 +789,10 @@ const root = {
     if (!user) throw new Error('User not found');
 
     const postType = args.type || 'portfolio';
+    const requiresRelationalAttribution = postType === 'portfolio';
+    const salonStaff = (args.salonId || args.stylistId || requiresRelationalAttribution)
+      ? await getValidSalonAndStaff(args.salonId, args.stylistId)
+      : null;
 
     if (postType === 'verified' && !args.bookingId) {
       throw new Error('Verified posts must be linked to a booking');
@@ -714,9 +818,15 @@ const root = {
       images: (args.images || []).map((image, index) => getPublicMediaUrl((args.imageKeys || [])[index] || image)),
       imageKeys: args.imageKeys || (args.images || []).map(getObjectKey).filter(Boolean),
       styleName: args.styleName,
-      barberName: args.barberName,
-      barberShop: args.barberShop,
-      location: args.location,
+      barberName: salonStaff?.stylist.name || args.barberName,
+      barberShop: salonStaff ? (salonStaff.salon.businessName || salonStaff.salon.name) : args.barberShop,
+      salonId: salonStaff?.salon._id,
+      salonName: salonStaff ? (salonStaff.salon.businessName || salonStaff.salon.name) : args.barberShop,
+      stylistId: salonStaff?.stylist._id?.toString(),
+      stylistName: salonStaff?.stylist.name || args.barberName,
+      stylistAvatar: salonStaff?.stylist.avatar || '',
+      salonLogo: salonStaff?.salon.avatar || '',
+      location: args.location || salonStaff?.salon.location,
       price: args.price || 0,
       currency: args.currency,
       description: args.description,
@@ -754,6 +864,12 @@ const root = {
       styleName: original.styleName,
       barberName: original.barberName,
       barberShop: original.barberShop,
+      salonId: original.salonId,
+      salonName: original.salonName,
+      stylistId: original.stylistId,
+      stylistName: original.stylistName,
+      stylistAvatar: original.stylistAvatar,
+      salonLogo: original.salonLogo,
       location: original.location,
       price: original.price,
       currency: original.currency,
@@ -795,13 +911,56 @@ const root = {
     post.comments.push({
       userId: user._id,
       userName: user.name,
-      userAvatar: user.avatar || '',
+      userAvatar: '',
       content,
       likes: 0,
       likedBy: [],
     });
     await post.save();
     return formatPost(post, authUser.id);
+  },
+
+  editComment: async ({ postId, commentId, content }, { req }) => {
+    const authUser = requireAuth(getUser(req));
+    if (!content || !content.trim()) throw new Error('Comment cannot be empty');
+    const post = await Post.findById(postId);
+    if (!post) throw new Error('Post not found');
+    const comment = post.comments.id(commentId);
+    if (!comment) throw new Error('Comment not found');
+    if (comment.userId.toString() !== authUser.id) throw new Error('Not authorized to edit this comment');
+    comment.content = content.trim();
+    await post.save();
+    return formatPost(post, authUser.id);
+  },
+
+  deleteComment: async ({ postId, commentId }, { req }) => {
+    const authUser = requireAuth(getUser(req));
+    const post = await Post.findById(postId);
+    if (!post) throw new Error('Post not found');
+    const comment = post.comments.id(commentId);
+    if (!comment) throw new Error('Comment not found');
+    if (comment.userId.toString() !== authUser.id) throw new Error('Not authorized to delete this comment');
+    comment.deleteOne();
+    await post.save();
+    return formatPost(post, authUser.id);
+  },
+
+  reportComment: async ({ postId, commentId, reason }, { req }) => {
+    const authUser = requireAuth(getUser(req));
+    const post = await Post.findById(postId);
+    if (!post) throw new Error('Post not found');
+    const comment = post.comments.id(commentId);
+    if (!comment) throw new Error('Comment not found');
+    if (comment.userId.toString() === authUser.id) throw new Error('You cannot report your own comment');
+    const alreadyReported = (comment.reports || []).some(report => report.userId?.toString() === authUser.id);
+    if (!alreadyReported) {
+      comment.reports.push({
+        userId: new mongoose.Types.ObjectId(authUser.id),
+        reason: reason || '',
+      });
+      await post.save();
+    }
+    return true;
   },
 
   toggleSavePost: async ({ postId }, { req }) => {

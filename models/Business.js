@@ -22,5 +22,9 @@ const businessSchema = new mongoose.Schema({
   }],
 }, { timestamps: true });
 
+locationSchema.index({ name: 1, city: 1 });
+locationSchema.index({ name: 'text', city: 'text', address: 'text' });
+businessSchema.index({ name: 'text', description: 'text' });
+
 export const Location = mongoose.model('Location', locationSchema);
 export default mongoose.model('Business', businessSchema);
