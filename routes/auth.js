@@ -2,47 +2,73 @@ import express from 'express';
 import passport from 'passport';
 import { Strategy as GoogleStrategy } from 'passport-google-oauth20';
 import jwt from 'jsonwebtoken';
+import bcrypt from 'bcryptjs';
 import User from '../models/User.js';
 
 const router = express.Router();
+const PRODUCTION_FRONTEND_URL = 'https://hair-master-web.vercel.app';
+const PRODUCTION_BACKEND_CALLBACK_URL = 'https://hairmaster-backend-1.onrender.com/auth/google/callback';
+let googleStrategyConfigured = false;
 
-passport.use(
-  new GoogleStrategy(
-    {
-      clientID:     process.env.GOOGLE_CLIENT_ID,
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-      callbackURL:  process.env.GOOGLE_CALLBACK_URL || '/auth/google/callback',
-    },
-    async (_accessToken, _refreshToken, profile, done) => {
-      try {
-        const email = profile.emails?.[0]?.value;
-        if (!email) return done(new Error('No email from Google'), null);
+function getFrontendUrl() {
+  return (process.env.FRONTEND_URL || process.env.WEB_URL || PRODUCTION_FRONTEND_URL).trim().replace(/\/+$/, '');
+}
 
-        let user = await User.findOne({ $or: [{ googleId: profile.id }, { email }] });
+function getGoogleCallbackUrl() {
+  return (process.env.GOOGLE_CALLBACK_URL || PRODUCTION_BACKEND_CALLBACK_URL).trim();
+}
 
-        if (user) {
-          if (!user.googleId) {
-            user.googleId = profile.id;
-            await user.save();
+function redirectToAuthFailure(res, reason = 'google_failed') {
+  const frontendUrl = getFrontendUrl();
+  res.redirect(`${frontendUrl}/login?error=${encodeURIComponent(reason)}`);
+}
+
+function configureGoogleStrategy() {
+  if (googleStrategyConfigured) return true;
+  if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) return false;
+
+  passport.use(
+    new GoogleStrategy(
+      {
+        clientID:     process.env.GOOGLE_CLIENT_ID,
+        clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+        callbackURL:  getGoogleCallbackUrl(),
+        proxy: true,
+      },
+      async (_accessToken, _refreshToken, profile, done) => {
+        try {
+          const email = profile.emails?.[0]?.value;
+          if (!email) return done(new Error('No email from Google'), null);
+
+          let user = await User.findOne({ $or: [{ googleId: profile.id }, { email }] });
+
+          if (user) {
+            if (!user.googleId) {
+              user.googleId = profile.id;
+              await user.save();
+            }
+          } else {
+            const password = await bcrypt.hash(`google_${profile.id}`, 10);
+            user = await User.create({
+              googleId:    profile.id,
+              name:        profile.displayName || email.split('@')[0],
+              email,
+              password,
+              accountType: 'personal',
+              avatar:      profile.photos?.[0]?.value || '',
+            });
           }
-        } else {
-          user = await User.create({
-            googleId:    profile.id,
-            name:        profile.displayName || email.split('@')[0],
-            email,
-            password:    `google_${profile.id}`,
-            accountType: 'personal',
-            avatar:      profile.photos?.[0]?.value || '',
-          });
-        }
 
-        return done(null, user);
-      } catch (err) {
-        return done(err, null);
+          return done(null, user);
+        } catch (err) {
+          return done(err, null);
+        }
       }
-    }
-  )
-);
+    )
+  );
+  googleStrategyConfigured = true;
+  return true;
+}
 
 passport.serializeUser((user, done) => done(null, user.id));
 passport.deserializeUser(async (id, done) => {
@@ -56,22 +82,52 @@ passport.deserializeUser(async (id, done) => {
 
 router.get(
   '/google',
-  passport.authenticate('google', { scope: ['profile', 'email'], session: false })
+  (req, res, next) => {
+    if (!configureGoogleStrategy()) {
+      return redirectToAuthFailure(res, 'google_not_configured');
+    }
+    return passport.authenticate('google', {
+      scope: ['profile', 'email'],
+      session: false,
+      prompt: 'select_account',
+    })(req, res, next);
+  }
 );
 
 router.get(
   '/google/callback',
-  passport.authenticate('google', { session: false, failureRedirect: '/login?error=google_failed' }),
+  (req, res, next) => {
+    if (!configureGoogleStrategy()) {
+      return redirectToAuthFailure(res, 'google_not_configured');
+    }
+    passport.authenticate('google', { session: false }, (err, user) => {
+      if (err) {
+        console.error('[Google OAuth] Callback failed:', err);
+        return redirectToAuthFailure(res, 'google_failed');
+      }
+      if (!user) {
+        return redirectToAuthFailure(res, 'google_denied');
+      }
+
+      req.user = user;
+      return next();
+    })(req, res, next);
+  },
   (req, res) => {
     const user = req.user;
+    if (!process.env.JWT_SECRET) {
+      console.error('[Google OAuth] Missing JWT_SECRET');
+      return redirectToAuthFailure(res, 'server_config');
+    }
+
     const token = jwt.sign(
       { id: user._id.toString(), email: user.email, accountType: user.accountType },
       process.env.JWT_SECRET,
       { expiresIn: '7d' }
     );
 
-    const webUrl = process.env.WEB_URL || 'http://localhost:5000';
-    res.redirect(`${webUrl}/auth/google/success?token=${token}`);
+    const frontendUrl = getFrontendUrl();
+    res.redirect(`${frontendUrl}/auth/success?token=${encodeURIComponent(token)}`);
   }
 );
 
