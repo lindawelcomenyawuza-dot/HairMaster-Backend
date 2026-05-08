@@ -84,8 +84,10 @@ router.get(
   '/google',
   (req, res, next) => {
     if (!configureGoogleStrategy()) {
+      console.error('[Google OAuth] Google auth requested but OAuth is not configured');
       return redirectToAuthFailure(res, 'google_not_configured');
     }
+    console.info('[Google OAuth] Starting Google OAuth flow');
     return passport.authenticate('google', {
       scope: ['profile', 'email'],
       session: false,
@@ -98,6 +100,7 @@ router.get(
   '/google/callback',
   (req, res, next) => {
     if (!configureGoogleStrategy()) {
+      console.error('[Google OAuth] Callback received but OAuth is not configured');
       return redirectToAuthFailure(res, 'google_not_configured');
     }
     passport.authenticate('google', { session: false }, (err, user) => {
@@ -106,9 +109,11 @@ router.get(
         return redirectToAuthFailure(res, 'google_failed');
       }
       if (!user) {
+        console.error('[Google OAuth] Callback denied by provider');
         return redirectToAuthFailure(res, 'google_denied');
       }
 
+      console.info(`[Google OAuth] Authentication succeeded for user ${user._id.toString()}`);
       req.user = user;
       return next();
     })(req, res, next);
@@ -125,9 +130,12 @@ router.get(
       process.env.JWT_SECRET,
       { expiresIn: '7d' }
     );
+    console.info(`[Google OAuth] JWT generated for user ${user._id.toString()}`);
 
     const frontendUrl = getFrontendUrl();
-    res.redirect(`${frontendUrl}/auth/success?token=${encodeURIComponent(token)}`);
+    const redirectUrl = `${frontendUrl}/auth/success?token=${encodeURIComponent(token)}`;
+    console.info(`[Google OAuth] Redirecting user ${user._id.toString()} to ${redirectUrl}`);
+    return res.redirect(redirectUrl);
   }
 );
 
