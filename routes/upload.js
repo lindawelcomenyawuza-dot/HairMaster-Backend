@@ -5,6 +5,7 @@ import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import crypto from 'crypto';
 import Media from '../models/Media.js';
 import { getUser, requireAuth } from '../middleware/auth.js';
+import { getPublicMediaBaseUrl, getPublicMediaUrl } from '../utils/media.js';
 
 const router = express.Router();
 
@@ -23,6 +24,7 @@ function normalizeEndpoint(endpoint, bucket) {
 
 function getR2Config() {
   const bucket = process.env.CLOUDFLARE_R2_BUCKET?.trim();
+  const publicUrl = getPublicMediaBaseUrl();
   const endpoint = normalizeEndpoint(
     process.env.CLOUDFLARE_R2_ENDPOINT ||
       (process.env.CLOUDFLARE_ACCOUNT_ID
@@ -33,6 +35,7 @@ function getR2Config() {
 
   const missing = [];
   if (!bucket) missing.push('CLOUDFLARE_R2_BUCKET');
+  if (!publicUrl) missing.push('CLOUDFLARE_PUBLIC_URL');
   if (!endpoint) missing.push('CLOUDFLARE_R2_ENDPOINT or CLOUDFLARE_ACCOUNT_ID');
   if (!process.env.CLOUDFLARE_R2_ACCESS_KEY) missing.push('CLOUDFLARE_R2_ACCESS_KEY');
   if (!process.env.CLOUDFLARE_R2_SECRET_KEY) missing.push('CLOUDFLARE_R2_SECRET_KEY');
@@ -44,6 +47,7 @@ function getR2Config() {
   return {
     bucket,
     endpoint,
+    publicUrl,
     credentials: {
       accessKeyId: process.env.CLOUDFLARE_R2_ACCESS_KEY,
       secretAccessKey: process.env.CLOUDFLARE_R2_SECRET_KEY,
@@ -57,10 +61,6 @@ function getR2Client({ endpoint, credentials }) {
     endpoint,
     credentials,
   });
-}
-
-function getFileUrl(endpoint, bucket, fileKey) {
-  return `${endpoint}/${bucket}/${fileKey}`;
 }
 
 const memoryStorage = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
@@ -92,7 +92,7 @@ router.post('/upload', memoryStorage.single('file'), async (req, res) => {
       ContentType: mimetype,
     }));
 
-    const fileUrl = getFileUrl(r2Config.endpoint, r2Config.bucket, fileKey);
+    const fileUrl = getPublicMediaUrl(fileKey);
 
     const media = await Media.create({
       ownerId:  user.id,
@@ -134,7 +134,7 @@ router.post('/upload/signed-url', express.json(), async (req, res) => {
       { expiresIn: 300 }
     );
 
-    const fileUrl = getFileUrl(r2Config.endpoint, r2Config.bucket, fileKey);
+    const fileUrl = getPublicMediaUrl(fileKey);
 
     return res.json({ signedUrl, fileUrl, fileKey });
   } catch (err) {

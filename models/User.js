@@ -34,6 +34,7 @@ const userSchema = new mongoose.Schema({
   password: { type: String, required: true },
   accountType: { type: String, enum: ['personal', 'business'], default: 'personal' },
   avatar: { type: String, default: '' },
+  avatarKey: String,
   bio: { type: String, default: '' },
   followers: { type: Number, default: 0 },
   following: { type: Number, default: 0 },

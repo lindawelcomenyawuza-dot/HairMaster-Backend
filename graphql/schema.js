@@ -10,6 +10,7 @@ import DiscountToken from '../models/DiscountToken.js';
 import Chat from '../models/Chat.js';
 import Product from '../models/Product.js';
 import { getUser, requireAuth } from '../middleware/auth.js';
+import { getObjectKey, getPublicMediaUrl } from '../utils/media.js';
 
 const typeDefs = `
   type PaymentRecord {
@@ -48,6 +49,7 @@ const typeDefs = `
     email: String!
     accountType: String!
     avatar: String
+    avatarKey: String
     bio: String
     followers: Int
     following: Int
@@ -98,9 +100,12 @@ const typeDefs = `
     userId: ID!
     userName: String!
     userAvatar: String!
+    userAvatarKey: String
     accountType: String!
     image: String!
+    imageKey: String
     images: [String]
+    imageKeys: [String]
     styleName: String!
     barberName: String
     barberShop: String
@@ -243,7 +248,9 @@ const typeDefs = `
     createPost(
       type: String
       image: String!
+      imageKey: String
       images: [String]
+      imageKeys: [String]
       styleName: String!
       barberName: String
       barberShop: String
@@ -282,6 +289,7 @@ const typeDefs = `
       name: String
       bio: String
       avatar: String
+      avatarKey: String
       location: String
       country: String
       currency: String
@@ -339,12 +347,18 @@ function formatPost(post, requestingUserId) {
   if (obj.bookingId) obj.bookingId = obj.bookingId.toString();
   if (obj.originalPostId) obj.originalPostId = obj.originalPostId.toString();
 
+  obj.imageKey = obj.imageKey || getObjectKey(obj.image);
+  obj.image = getPublicMediaUrl(obj.imageKey || obj.image);
+  obj.images = (obj.images || []).map((image, index) => getPublicMediaUrl((obj.imageKeys || [])[index] || image));
+  obj.userAvatarKey = obj.userAvatarKey || getObjectKey(obj.userAvatar);
+  obj.userAvatar = getPublicMediaUrl(obj.userAvatarKey || obj.userAvatar);
+
   obj.comments = (obj.comments || []).map(c => ({
     id: c._id.toString(),
     postId: obj.id,
     userId: c.userId.toString(),
     userName: c.userName,
-    userAvatar: c.userAvatar,
+    userAvatar: getPublicMediaUrl(c.userAvatar),
     content: c.content,
     createdAt: c.createdAt ? c.createdAt.toISOString() : new Date().toISOString(),
     likes: c.likes || 0,
@@ -372,6 +386,8 @@ function formatUser(user, requestingUserId, followingIds) {
   obj.savedPosts = (obj.savedPosts || []).map(id => id.toString());
   obj.followingIds = (obj.followingIds || []).map(id => id.toString());
   obj.followerIds = (obj.followerIds || []).map(id => id.toString());
+  obj.avatarKey = obj.avatarKey || getObjectKey(obj.avatar);
+  obj.avatar = getPublicMediaUrl(obj.avatarKey || obj.avatar);
 
   if (requestingUserId && followingIds) {
     obj.isFollowing = followingIds.some(id => id.toString() === obj.id);
@@ -401,6 +417,7 @@ function formatUser(user, requestingUserId, followingIds) {
     obj.staff = obj.staff.map(s => ({
       ...s,
       id: s._id ? s._id.toString() : s.id,
+      avatar: getPublicMediaUrl(s.avatar),
     }));
   }
 
@@ -461,6 +478,7 @@ function formatProduct(product) {
   delete obj._id;
   delete obj.__v;
   obj.businessId = obj.businessId.toString();
+  obj.images = (obj.images || []).map(image => getPublicMediaUrl(image));
   obj.createdAt = obj.createdAt ? obj.createdAt.toISOString() : new Date().toISOString();
   return obj;
 }
@@ -689,9 +707,12 @@ const root = {
       createdBy: user._id,
       userName: user.name,
       userAvatar: user.avatar || '',
+      userAvatarKey: user.avatarKey || getObjectKey(user.avatar),
       accountType: user.accountType,
-      image: args.image,
-      images: args.images,
+      image: getPublicMediaUrl(args.imageKey || args.image),
+      imageKey: args.imageKey || getObjectKey(args.image),
+      images: (args.images || []).map((image, index) => getPublicMediaUrl((args.imageKeys || [])[index] || image)),
+      imageKeys: args.imageKeys || (args.images || []).map(getObjectKey).filter(Boolean),
       styleName: args.styleName,
       barberName: args.barberName,
       barberShop: args.barberShop,
@@ -724,9 +745,12 @@ const root = {
       locationId: original.locationId,
       userName: user.name,
       userAvatar: user.avatar || '',
+      userAvatarKey: user.avatarKey || getObjectKey(user.avatar),
       accountType: user.accountType,
       image: original.image,
+      imageKey: original.imageKey || getObjectKey(original.image),
       images: original.images,
+      imageKeys: original.imageKeys,
       styleName: original.styleName,
       barberName: original.barberName,
       barberShop: original.barberShop,
@@ -946,6 +970,7 @@ const root = {
     }
     const product = new Product({
       ...args,
+      images: (args.images || []).map(getPublicMediaUrl),
       businessId: authUser.id,
       deliveryAvailable: args.deliveryAvailable ?? false,
     });
@@ -957,6 +982,7 @@ const root = {
     const authUser = requireAuth(getUser(req));
     const product = await Product.findOne({ _id: id, businessId: authUser.id });
     if (!product) throw new Error('Product not found');
+    if (updates.images) updates.images = updates.images.map(getPublicMediaUrl);
     Object.assign(product, updates);
     await product.save();
     return formatProduct(product);
@@ -1033,7 +1059,12 @@ const root = {
     const authUser = requireAuth(getUser(req));
     const user = await User.findById(authUser.id);
     if (!user) throw new Error('User not found');
-    Object.assign(user, args);
+    const updates = { ...args };
+    if (Object.prototype.hasOwnProperty.call(updates, 'avatar')) {
+      updates.avatarKey = updates.avatarKey || getObjectKey(updates.avatar);
+      updates.avatar = getPublicMediaUrl(updates.avatarKey || updates.avatar);
+    }
+    Object.assign(user, updates);
     await user.save();
     return formatUser(user, authUser.id, user.followingIds);
   },
