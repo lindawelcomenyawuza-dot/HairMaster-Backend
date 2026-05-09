@@ -1,0 +1,192 @@
+import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
+import mongoose from 'mongoose';
+import User from '../../models/User.js';
+import DiscountToken from '../../models/DiscountToken.js';
+import { getUser, requireAuth } from '../../middleware/auth.js';
+import { getObjectKey, getPublicMediaUrl } from '../../utils/media.js';
+import { formatDiscountToken, formatUser } from './shared.js';
+
+const tokenTiers = [
+  { label: 'Bronze', pointCost: 100, discount: 5, description: 'Get 5% off your next booking' },
+  { label: 'Silver', pointCost: 250, discount: 10, description: 'Get 10% off your next booking' },
+  { label: 'Gold', pointCost: 500, discount: 15, description: 'Get 15% off your next booking' },
+  { label: 'Platinum', pointCost: 1000, discount: 25, description: 'Get 25% off your next booking' },
+];
+
+export const resolvers = {
+  me: async (_, { req }) => {
+    const authUser = getUser(req);
+    if (!authUser) return null;
+    const user = await User.findById(authUser.id);
+    if (!user) return null;
+    return formatUser(user, authUser.id, user.followingIds);
+  },
+
+  user: async ({ id }, { req }) => {
+    const authUser = getUser(req);
+    const user = await User.findById(id);
+    if (!user) return null;
+    const requestingUser = authUser ? await User.findById(authUser.id) : null;
+    return formatUser(user, authUser?.id, requestingUser?.followingIds || []);
+  },
+
+  users: async (_, { req }) => {
+    const authUser = getUser(req);
+    const users = await User.find();
+    const requestingUser = authUser ? await User.findById(authUser.id) : null;
+    return users.map(u => formatUser(u, authUser?.id, requestingUser?.followingIds || []));
+  },
+
+  myTokens: async (_, { req }) => {
+    const authUser = requireAuth(getUser(req));
+    const tokens = await DiscountToken.find({ userId: authUser.id }).sort({ createdAt: -1 });
+    return tokens.map(formatDiscountToken);
+  },
+
+  tokenTiers: async () => tokenTiers,
+
+  register: async ({ name, email, password, accountType }) => {
+    const existing = await User.findOne({ email });
+    if (existing) throw new Error('Email already in use');
+    const hashed = await bcrypt.hash(password, 10);
+    const user = new User({
+      name,
+      email,
+      password: hashed,
+      accountType: accountType || 'personal',
+      avatar: '',
+      bio: '',
+      followers: 0,
+      following: 0,
+    });
+    await user.save();
+    const token = jwt.sign({ id: user._id.toString(), email }, process.env.JWT_SECRET, { expiresIn: '7d' });
+    return { token, user: formatUser(user, user._id.toString(), []) };
+  },
+
+  login: async ({ email, password }) => {
+    const user = await User.findOne({ email });
+    if (!user) throw new Error('Invalid credentials');
+    const valid = await bcrypt.compare(password, user.password);
+    if (!valid) throw new Error('Invalid credentials');
+    const token = jwt.sign({ id: user._id.toString(), email }, process.env.JWT_SECRET, { expiresIn: '7d' });
+    return { token, user: formatUser(user, user._id.toString(), user.followingIds) };
+  },
+
+  toggleFollow: async ({ userId }, { req }) => {
+    const authUser = requireAuth(getUser(req));
+    if (authUser.id === userId) throw new Error('Cannot follow yourself');
+
+    const currentUser = await User.findById(authUser.id);
+    const targetUser = await User.findById(userId);
+    if (!currentUser || !targetUser) throw new Error('User not found');
+
+    const targetOid = new mongoose.Types.ObjectId(userId);
+    const currentOid = new mongoose.Types.ObjectId(authUser.id);
+
+    const isFollowing = currentUser.followingIds.some(id => id.equals(targetOid));
+    if (isFollowing) {
+      currentUser.followingIds = currentUser.followingIds.filter(id => !id.equals(targetOid));
+      currentUser.following = Math.max(0, currentUser.following - 1);
+      targetUser.followerIds = targetUser.followerIds.filter(id => !id.equals(currentOid));
+      targetUser.followers = Math.max(0, targetUser.followers - 1);
+    } else {
+      currentUser.followingIds.push(targetOid);
+      currentUser.following += 1;
+      targetUser.followerIds.push(currentOid);
+      targetUser.followers += 1;
+    }
+
+    await currentUser.save();
+    await targetUser.save();
+    return formatUser(targetUser, authUser.id, currentUser.followingIds);
+  },
+
+  redeemPoints: async ({ pointCost }, { req }) => {
+    const authUser = requireAuth(getUser(req));
+    const user = await User.findById(authUser.id);
+    if (!user) throw new Error('User not found');
+
+    const tier = tokenTiers.find(t => t.pointCost === pointCost);
+    if (!tier) throw new Error('Invalid tier');
+
+    const currentPoints = user.loyaltyPoints || 0;
+    if (currentPoints < pointCost) throw new Error('Insufficient loyalty points');
+
+    const code = `${tier.label.toUpperCase()}-${Date.now().toString(36).toUpperCase()}`;
+    const expiresAt = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000);
+
+    const token = new DiscountToken({
+      userId: authUser.id,
+      code,
+      discount: tier.discount,
+      pointCost,
+      used: false,
+      expiresAt,
+    });
+    await token.save();
+
+    user.loyaltyPoints = currentPoints - pointCost;
+    user.discountTokens = (user.discountTokens || 0) + 1;
+    await user.save();
+
+    return {
+      token: formatDiscountToken(token),
+      newLoyaltyPoints: user.loyaltyPoints,
+    };
+  },
+
+  useToken: async ({ code }, { req }) => {
+    const authUser = requireAuth(getUser(req));
+    const token = await DiscountToken.findOne({ code, userId: authUser.id });
+    if (!token) throw new Error('Token not found');
+    if (token.used) throw new Error('Token already used');
+    if (new Date(token.expiresAt) < new Date()) throw new Error('Token has expired');
+
+    token.used = true;
+    token.usedAt = new Date();
+    await token.save();
+
+    const user = await User.findById(authUser.id);
+    if (user && user.discountTokens > 0) {
+      user.discountTokens -= 1;
+      await user.save();
+    }
+
+    return formatDiscountToken(token);
+  },
+
+  updateProfile: async (args, { req }) => {
+    const authUser = requireAuth(getUser(req));
+    const user = await User.findById(authUser.id);
+    if (!user) throw new Error('User not found');
+    const updates = { ...args };
+    delete updates.name;
+    if (Object.prototype.hasOwnProperty.call(updates, 'avatar')) {
+      updates.avatarKey = updates.avatarKey || getObjectKey(updates.avatar);
+      updates.avatar = getPublicMediaUrl(updates.avatarKey || updates.avatar);
+    }
+    Object.assign(user, updates);
+    await user.save();
+    return formatUser(user, authUser.id, user.followingIds);
+  },
+
+  updateProfileSettings: async (args, { req }) => {
+    const authUser = requireAuth(getUser(req));
+    const user = await User.findById(authUser.id);
+    if (!user) throw new Error('User not found');
+    const updates = { ...args };
+    if (Object.prototype.hasOwnProperty.call(updates, 'avatar')) {
+      updates.avatarKey = updates.avatarKey || getObjectKey(updates.avatar);
+      updates.avatar = getPublicMediaUrl(updates.avatarKey || updates.avatar);
+    }
+    if (Object.prototype.hasOwnProperty.call(updates, 'name')) {
+      updates.name = updates.name?.trim();
+      if (!updates.name) throw new Error('Name cannot be empty');
+    }
+    Object.assign(user, updates);
+    await user.save();
+    return formatUser(user, authUser.id, user.followingIds);
+  },
+};
