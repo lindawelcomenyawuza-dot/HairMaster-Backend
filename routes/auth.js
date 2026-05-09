@@ -23,6 +23,30 @@ function redirectToAuthFailure(res, reason = 'google_failed') {
   res.redirect(`${frontendUrl}/login?error=${encodeURIComponent(reason)}`);
 }
 
+async function findOrCreateGoogleUser(profile) {
+  const email = profile.emails?.[0]?.value;
+  if (!email) throw new Error('No email from Google');
+
+  const existingUser = await User.findOne({ $or: [{ googleId: profile.id }, { email }] });
+  if (existingUser) {
+    if (!existingUser.googleId) {
+      existingUser.googleId = profile.id;
+      await existingUser.save();
+    }
+    return existingUser;
+  }
+
+  const password = await bcrypt.hash(`google_${profile.id}`, 10);
+  return User.create({
+    googleId:    profile.id,
+    name:        profile.displayName || email.split('@')[0],
+    email,
+    password,
+    accountType: 'personal',
+    avatar:      profile.photos?.[0]?.value || '',
+  });
+}
+
 function configureGoogleStrategy() {
   if (googleStrategyConfigured) return true;
   if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) return false;
@@ -37,28 +61,7 @@ function configureGoogleStrategy() {
       },
       async (_accessToken, _refreshToken, profile, done) => {
         try {
-          const email = profile.emails?.[0]?.value;
-          if (!email) return done(new Error('No email from Google'), null);
-
-          let user = await User.findOne({ $or: [{ googleId: profile.id }, { email }] });
-
-          if (user) {
-            if (!user.googleId) {
-              user.googleId = profile.id;
-              await user.save();
-            }
-          } else {
-            const password = await bcrypt.hash(`google_${profile.id}`, 10);
-            user = await User.create({
-              googleId:    profile.id,
-              name:        profile.displayName || email.split('@')[0],
-              email,
-              password,
-              accountType: 'personal',
-              avatar:      profile.photos?.[0]?.value || '',
-            });
-          }
-
+          const user = await findOrCreateGoogleUser(profile);
           return done(null, user);
         } catch (err) {
           return done(err, null);
