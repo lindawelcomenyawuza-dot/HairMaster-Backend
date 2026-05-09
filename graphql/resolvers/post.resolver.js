@@ -60,6 +60,14 @@ export const resolvers = {
       }
     }
 
+    const requestedPrice = Number(args.price || 0);
+    const hasServicePricing = requestedPrice > 0 || Boolean(args.currency);
+    if (hasServicePricing && user.accountType !== 'business') {
+      throw new Error('Only business accounts can add service pricing to posts');
+    }
+    const price = user.accountType === 'business' ? Math.max(0, requestedPrice) : 0;
+    const currency = user.accountType === 'business' ? (args.currency || user.currency || 'ZAR') : 'ZAR';
+
     const post = new Post({
       type: postType,
       userId: user._id,
@@ -82,8 +90,9 @@ export const resolvers = {
       stylistAvatar: salonStaff?.stylist.avatar || '',
       salonLogo: salonStaff?.salon.avatar || '',
       location: args.location || salonStaff?.salon.location,
-      price: args.price || 0,
-      currency: args.currency,
+      price,
+      currency,
+      isService: user.accountType === 'business' && price > 0,
       description: args.description,
       gender: args.gender,
       hashtags: args.hashtags,

@@ -43,6 +43,7 @@ export const typeDefs = `
     originalPostId: String
     price: Float!
     currency: String
+    isService: Boolean!
     rating: Float
     likes: Int!
     isLiked: Boolean!

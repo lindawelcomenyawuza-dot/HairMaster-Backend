@@ -1,6 +1,8 @@
+import mongoose from 'mongoose';
 import Booking from '../../models/Booking.js';
 import User from '../../models/User.js';
 import Chat from '../../models/Chat.js';
+import Post from '../../models/Post.js';
 import { getUser, requireAuth } from '../../middleware/auth.js';
 import { formatBooking } from './shared.js';
 
@@ -13,11 +15,30 @@ export const resolvers = {
 
   createBooking: async (args, { req }) => {
     const authUser = requireAuth(getUser(req));
-    const booking = new Booking({
+    const sourcePost = args.postId && args.postId !== 'custom' && mongoose.Types.ObjectId.isValid(args.postId)
+      ? await Post.findById(args.postId)
+      : null;
+
+    const bookingPayload = {
       ...args,
       userId: authUser.id,
       date: new Date(args.date),
       status: 'pending',
+    };
+
+    if (sourcePost) {
+      bookingPayload.postId = sourcePost._id;
+      bookingPayload.barberId = sourcePost.barberId || sourcePost.salonId || undefined;
+      bookingPayload.styleName = sourcePost.styleName;
+      bookingPayload.barberName = sourcePost.stylistName || sourcePost.barberName;
+      bookingPayload.location = sourcePost.location;
+      bookingPayload.price = sourcePost.price || 0;
+      bookingPayload.currency = sourcePost.currency || 'ZAR';
+      bookingPayload.depositAmount = args.depositAmount ?? bookingPayload.depositAmount;
+    }
+
+    const booking = new Booking({
+      ...bookingPayload,
     });
     await booking.save();
 

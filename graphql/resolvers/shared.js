@@ -23,6 +23,9 @@ export async function formatPost(post, requestingUserId) {
   obj.commentsCount = obj.comments?.length || 0;
   obj.createdAt = obj.createdAt ? obj.createdAt.toISOString() : new Date().toISOString();
   obj.type = obj.type || 'portfolio';
+  obj.price = Number(obj.price || 0);
+  obj.currency = obj.currency || 'ZAR';
+  obj.isService = Boolean(obj.isService || obj.price > 0);
 
   if (obj.barberId) obj.barberId = obj.barberId.toString();
   if (obj.salonId) obj.salonId = obj.salonId.toString();
