@@ -313,6 +313,17 @@ const typeDefs = `
     redeemPoints(pointCost: Int!): RedeemResult
     useToken(code: String!): DiscountToken
     updateProfile(
+      bio: String
+      avatar: String
+      avatarKey: String
+      location: String
+      country: String
+      currency: String
+      businessName: String
+      darkMode: Boolean
+      language: String
+    ): User
+    updateProfileSettings(
       name: String
       bio: String
       avatar: String
@@ -1219,9 +1230,28 @@ const root = {
     const user = await User.findById(authUser.id);
     if (!user) throw new Error('User not found');
     const updates = { ...args };
+    delete updates.name;
     if (Object.prototype.hasOwnProperty.call(updates, 'avatar')) {
       updates.avatarKey = updates.avatarKey || getObjectKey(updates.avatar);
       updates.avatar = getPublicMediaUrl(updates.avatarKey || updates.avatar);
+    }
+    Object.assign(user, updates);
+    await user.save();
+    return formatUser(user, authUser.id, user.followingIds);
+  },
+
+  updateProfileSettings: async (args, { req }) => {
+    const authUser = requireAuth(getUser(req));
+    const user = await User.findById(authUser.id);
+    if (!user) throw new Error('User not found');
+    const updates = { ...args };
+    if (Object.prototype.hasOwnProperty.call(updates, 'avatar')) {
+      updates.avatarKey = updates.avatarKey || getObjectKey(updates.avatar);
+      updates.avatar = getPublicMediaUrl(updates.avatarKey || updates.avatar);
+    }
+    if (Object.prototype.hasOwnProperty.call(updates, 'name')) {
+      updates.name = updates.name?.trim();
+      if (!updates.name) throw new Error('Name cannot be empty');
     }
     Object.assign(user, updates);
     await user.save();
