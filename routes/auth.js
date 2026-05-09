@@ -4,6 +4,8 @@ import { Strategy as GoogleStrategy } from 'passport-google-oauth20';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import User from '../models/User.js';
+import { createSecureToken, getFutureDate, hashToken } from '../utils/authTokens.js';
+import { sendPasswordResetEmail, sendVerificationEmail } from '../utils/email.js';
 
 const router = express.Router();
 const PRODUCTION_FRONTEND_URL = 'https://hair-master-web.vercel.app';
@@ -31,8 +33,11 @@ async function findOrCreateGoogleUser(profile) {
   if (existingUser) {
     if (!existingUser.googleId) {
       existingUser.googleId = profile.id;
-      await existingUser.save();
     }
+    existingUser.isVerified = true;
+    existingUser.emailVerificationTokenHash = undefined;
+    existingUser.emailVerificationExpires = undefined;
+    await existingUser.save();
     return existingUser;
   }
 
@@ -41,11 +46,111 @@ async function findOrCreateGoogleUser(profile) {
     googleId:    profile.id,
     name:        profile.displayName || email.split('@')[0],
     email,
+    phone:       `google-${profile.id}`,
     password,
     accountType: 'personal',
     avatar:      profile.photos?.[0]?.value || '',
+    isVerified: true,
+    consentAccepted: true,
+    consentTimestamp: new Date(),
   });
 }
+
+router.get('/verify-email', async (req, res) => {
+  try {
+    const token = req.query.token;
+    if (!token || typeof token !== 'string') {
+      return res.status(400).json({ error: 'Verification token is required' });
+    }
+
+    const user = await User.findOne({
+      emailVerificationTokenHash: hashToken(token),
+      emailVerificationExpires: { $gt: new Date() },
+    });
+    if (!user) return res.status(400).json({ error: 'Invalid or expired verification token' });
+
+    user.isVerified = true;
+    user.emailVerificationTokenHash = undefined;
+    user.emailVerificationExpires = undefined;
+    await user.save();
+
+    return res.json({ ok: true });
+  } catch (err) {
+    console.error('[Auth] Email verification failed:', err);
+    return res.status(500).json({ error: 'Could not verify email' });
+  }
+});
+
+router.post('/resend-verification', async (req, res) => {
+  try {
+    const email = String(req.body?.email || '').trim().toLowerCase();
+    if (!email) return res.status(400).json({ error: 'Email is required' });
+
+    const user = await User.findOne({ email });
+    if (user && !user.isVerified) {
+      const { token, tokenHash } = createSecureToken();
+      user.emailVerificationTokenHash = tokenHash;
+      user.emailVerificationExpires = getFutureDate(24 * 60);
+      await user.save();
+      await sendVerificationEmail(user, token);
+    }
+
+    return res.json({ ok: true });
+  } catch (err) {
+    console.error('[Auth] Resend verification failed:', err);
+    return res.status(500).json({ error: 'Could not resend verification email' });
+  }
+});
+
+router.post('/forgot-password', async (req, res) => {
+  try {
+    const email = String(req.body?.email || '').trim().toLowerCase();
+    if (!email) return res.status(400).json({ error: 'Email is required' });
+
+    const user = await User.findOne({ email });
+    if (user) {
+      const { token, tokenHash } = createSecureToken();
+      user.passwordResetTokenHash = tokenHash;
+      user.passwordResetExpires = getFutureDate(30);
+      user.passwordResetUsedAt = undefined;
+      await user.save();
+      await sendPasswordResetEmail(user, token);
+    }
+
+    return res.json({ ok: true });
+  } catch (err) {
+    console.error('[Auth] Forgot password failed:', err);
+    return res.status(500).json({ error: 'Could not start password reset' });
+  }
+});
+
+router.post('/reset-password', async (req, res) => {
+  try {
+    const token = String(req.body?.token || '');
+    const password = String(req.body?.password || '');
+    if (!token || password.length < 8) {
+      return res.status(400).json({ error: 'Valid token and password are required' });
+    }
+
+    const user = await User.findOne({
+      passwordResetTokenHash: hashToken(token),
+      passwordResetExpires: { $gt: new Date() },
+      passwordResetUsedAt: { $exists: false },
+    });
+    if (!user) return res.status(400).json({ error: 'Invalid or expired reset token' });
+
+    user.password = await bcrypt.hash(password, 10);
+    user.passwordResetTokenHash = undefined;
+    user.passwordResetExpires = undefined;
+    user.passwordResetUsedAt = new Date();
+    await user.save();
+
+    return res.json({ ok: true });
+  } catch (err) {
+    console.error('[Auth] Reset password failed:', err);
+    return res.status(500).json({ error: 'Could not reset password' });
+  }
+});
 
 function configureGoogleStrategy() {
   if (googleStrategyConfigured) return true;
@@ -129,7 +234,7 @@ router.get(
     }
 
     const token = jwt.sign(
-      { id: user._id.toString(), email: user.email, accountType: user.accountType },
+      { id: user._id.toString(), email: user.email, accountType: user.accountType, isVerified: user.isVerified },
       process.env.JWT_SECRET,
       { expiresIn: '7d' }
     );

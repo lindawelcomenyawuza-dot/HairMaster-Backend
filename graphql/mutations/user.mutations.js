@@ -1,5 +1,12 @@
 export const mutations = `
-  register(name: String!, email: String!, password: String!, accountType: String): AuthPayload
+  register(
+    name: String!
+    email: String!
+    password: String!
+    phone: String!
+    consentAccepted: Boolean!
+    accountType: String
+  ): AuthPayload
   login(email: String!, password: String!): AuthPayload
   toggleFollow(userId: ID!): User
   redeemPoints(pointCost: Int!): RedeemResult

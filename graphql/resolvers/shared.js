@@ -123,6 +123,7 @@ export function formatUser(user, requestingUserId, followingIds) {
   obj.followerIds = (obj.followerIds || []).map(id => id.toString());
   obj.avatarKey = obj.avatarKey || getObjectKey(obj.avatar);
   obj.avatar = getPublicMediaUrl(obj.avatarKey || obj.avatar);
+  obj.consentTimestamp = obj.consentTimestamp ? obj.consentTimestamp.toISOString() : null;
 
   if (requestingUserId && followingIds) {
     obj.isFollowing = followingIds.some(id => id.toString() === obj.id);

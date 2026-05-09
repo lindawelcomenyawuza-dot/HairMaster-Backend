@@ -5,6 +5,8 @@ import User from '../../models/User.js';
 import DiscountToken from '../../models/DiscountToken.js';
 import { getUser, requireAuth } from '../../middleware/auth.js';
 import { getObjectKey, getPublicMediaUrl } from '../../utils/media.js';
+import { createSecureToken, getFutureDate } from '../../utils/authTokens.js';
+import { sendVerificationEmail } from '../../utils/email.js';
 import { formatDiscountToken, formatUser } from './shared.js';
 
 const tokenTiers = [
@@ -46,31 +48,47 @@ export const resolvers = {
 
   tokenTiers: async () => tokenTiers,
 
-  register: async ({ name, email, password, accountType }) => {
-    const existing = await User.findOne({ email });
+  register: async ({ name, email, password, phone, consentAccepted, accountType }) => {
+    if (!consentAccepted) throw new Error('Terms and consent must be accepted');
+    if (!phone || !phone.trim()) throw new Error('Phone number is required');
+
+    const normalizedEmail = email.trim().toLowerCase();
+    const existing = await User.findOne({ email: normalizedEmail });
     if (existing) throw new Error('Email already in use');
     const hashed = await bcrypt.hash(password, 10);
+    const { token, tokenHash } = createSecureToken();
     const user = new User({
       name,
-      email,
+      email: normalizedEmail,
+      phone: phone.trim(),
       password: hashed,
       accountType: accountType || 'personal',
       avatar: '',
       bio: '',
       followers: 0,
       following: 0,
+      isVerified: false,
+      emailVerificationTokenHash: tokenHash,
+      emailVerificationExpires: getFutureDate(24 * 60),
+      consentAccepted: true,
+      consentTimestamp: new Date(),
     });
     await user.save();
-    const token = jwt.sign({ id: user._id.toString(), email }, process.env.JWT_SECRET, { expiresIn: '7d' });
-    return { token, user: formatUser(user, user._id.toString(), []) };
+    await sendVerificationEmail(user, token);
+    return { token: '', user: formatUser(user, user._id.toString(), []) };
   },
 
   login: async ({ email, password }) => {
-    const user = await User.findOne({ email });
+    const user = await User.findOne({ email: email.trim().toLowerCase() });
     if (!user) throw new Error('Invalid credentials');
     const valid = await bcrypt.compare(password, user.password);
     if (!valid) throw new Error('Invalid credentials');
-    const token = jwt.sign({ id: user._id.toString(), email }, process.env.JWT_SECRET, { expiresIn: '7d' });
+    if (!user.isVerified) throw new Error('Please verify your email before logging in');
+    const token = jwt.sign(
+      { id: user._id.toString(), email: user.email, accountType: user.accountType, isVerified: user.isVerified },
+      process.env.JWT_SECRET,
+      { expiresIn: '7d' }
+    );
     return { token, user: formatUser(user, user._id.toString(), user.followingIds) };
   },
 

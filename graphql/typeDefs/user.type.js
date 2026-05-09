@@ -33,6 +33,7 @@ export const typeDefs = `
     id: ID!
     name: String!
     email: String!
+    phone: String
     accountType: String!
     avatar: String
     avatarKey: String
@@ -44,6 +45,8 @@ export const typeDefs = `
     currency: String
     businessName: String
     isVerified: Boolean
+    consentAccepted: Boolean
+    consentTimestamp: String
     verificationBadge: String
     subscription: Subscription
     staff: [StaffMember]
