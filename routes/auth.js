@@ -33,8 +33,12 @@ async function findOrCreateGoogleUser(profile) {
   if (existingUser) {
     if (!existingUser.googleId) {
       existingUser.googleId = profile.id;
-      await existingUser.save();
     }
+    existingUser.authProvider = 'google';
+    existingUser.isVerified = true;
+    existingUser.emailVerificationTokenHash = undefined;
+    existingUser.emailVerificationExpires = undefined;
+    await existingUser.save();
     return existingUser;
   }
 
@@ -48,6 +52,7 @@ async function findOrCreateGoogleUser(profile) {
     accountType: 'personal',
     avatar:      profile.photos?.[0]?.value || '',
     isVerified: true,
+    authProvider: 'google',
     consentAccepted: true,
     consentTimestamp: new Date(),
   });
@@ -223,7 +228,7 @@ router.get(
     }
 
     const token = jwt.sign(
-      { id: user._id.toString(), email: user.email, accountType: user.accountType, isVerified: user.isVerified },
+      { id: user._id.toString(), email: user.email, accountType: user.accountType, isVerified: user.isVerified, authProvider: user.authProvider || (user.googleId ? 'google' : 'email') },
       process.env.JWT_SECRET,
       { expiresIn: '7d' }
     );

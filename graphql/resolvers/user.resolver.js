@@ -68,6 +68,7 @@ export const resolvers = {
       followers: 0,
       following: 0,
       isVerified: false,
+      authProvider: 'email',
       emailVerificationTokenHash: tokenHash,
       emailVerificationExpires: getFutureDate(24 * 60),
       consentAccepted: true,
@@ -84,7 +85,7 @@ export const resolvers = {
     const valid = await bcrypt.compare(password, user.password);
     if (!valid) throw new Error('Invalid credentials');
     const token = jwt.sign(
-      { id: user._id.toString(), email: user.email, accountType: user.accountType, isVerified: user.isVerified },
+      { id: user._id.toString(), email: user.email, accountType: user.accountType, isVerified: user.isVerified, authProvider: user.authProvider || 'email' },
       process.env.JWT_SECRET,
       { expiresIn: '7d' }
     );

@@ -124,6 +124,7 @@ export function formatUser(user, requestingUserId, followingIds) {
   obj.avatarKey = obj.avatarKey || getObjectKey(obj.avatar);
   obj.avatar = getPublicMediaUrl(obj.avatarKey || obj.avatar);
   obj.consentTimestamp = obj.consentTimestamp ? obj.consentTimestamp.toISOString() : null;
+  obj.authProvider = obj.authProvider || (obj.googleId ? 'google' : 'email');
 
   if (requestingUserId && followingIds) {
     obj.isFollowing = followingIds.some(id => id.toString() === obj.id);

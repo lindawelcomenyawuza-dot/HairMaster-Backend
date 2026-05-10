@@ -66,6 +66,7 @@ const userSchema = new mongoose.Schema({
   discountTokens: { type: Number, default: 0 },
   darkMode: { type: Boolean, default: false },
   language: { type: String, default: 'en' },
+  authProvider: { type: String, enum: ['email', 'google'], default: 'email' },
   googleId: { type: String, sparse: true },
 }, { timestamps: true });
 

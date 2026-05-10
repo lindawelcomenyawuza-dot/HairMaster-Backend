@@ -49,6 +49,7 @@ export const typeDefs = `
     currency: String
     businessName: String
     isVerified: Boolean
+    authProvider: String
     consentAccepted: Boolean
     consentTimestamp: String
     verificationBadge: String
