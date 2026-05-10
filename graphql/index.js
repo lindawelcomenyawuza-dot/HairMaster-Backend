@@ -60,24 +60,6 @@ export const root = {
   ...productResolvers,
 };
 
-for (const [name, resolver] of Object.entries(root)) {
-  if (typeof resolver !== 'function') continue;
-  if (['register', 'login', 'me', 'posts', 'post', 'userPosts', 'searchSalons', 'getSalonStaff', 'businessProducts', 'tokenTiers'].includes(name)) continue;
-  root[name] = async (args, context) => {
-    const auth = context?.req?.headers?.authorization || '';
-    if (auth.startsWith('Bearer ')) {
-      const { getUser } = await import('../middleware/auth.js');
-      const User = (await import('../models/User.js')).default;
-      const authUser = getUser(context.req);
-      if (authUser) {
-        const user = await User.findById(authUser.id).select('isVerified');
-        if (user && !user.isVerified) throw new Error('Email verification required');
-      }
-    }
-    return resolver(args, context);
-  };
-}
-
 const schema = buildSchema(typeDefs);
 
 export { typeDefs };

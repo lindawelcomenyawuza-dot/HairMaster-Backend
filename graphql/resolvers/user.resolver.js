@@ -83,7 +83,6 @@ export const resolvers = {
     if (!user) throw new Error('Invalid credentials');
     const valid = await bcrypt.compare(password, user.password);
     if (!valid) throw new Error('Invalid credentials');
-    if (!user.isVerified) throw new Error('Please verify your email before logging in');
     const token = jwt.sign(
       { id: user._id.toString(), email: user.email, accountType: user.accountType, isVerified: user.isVerified },
       process.env.JWT_SECRET,

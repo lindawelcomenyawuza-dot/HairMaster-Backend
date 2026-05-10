@@ -5,7 +5,7 @@ import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import User from '../models/User.js';
 import { createSecureToken, getFutureDate, hashToken } from '../utils/authTokens.js';
-import { sendPasswordResetEmail, sendVerificationEmail } from '../utils/email.js';
+import { sendPasswordResetEmail } from '../utils/email.js';
 
 const router = express.Router();
 const PRODUCTION_FRONTEND_URL = 'https://hair-master-web.vercel.app';
@@ -38,7 +38,6 @@ async function findOrCreateGoogleUser(profile) {
     return existingUser;
   }
 
-  const { token, tokenHash } = createSecureToken();
   const password = await bcrypt.hash(`google_${profile.id}`, 10);
   const user = await User.create({
     googleId:    profile.id,
@@ -48,13 +47,10 @@ async function findOrCreateGoogleUser(profile) {
     password,
     accountType: 'personal',
     avatar:      profile.photos?.[0]?.value || '',
-    isVerified: false,
-    emailVerificationTokenHash: tokenHash,
-    emailVerificationExpires: getFutureDate(24 * 60),
+    isVerified: true,
     consentAccepted: true,
     consentTimestamp: new Date(),
   });
-  await sendVerificationEmail(user, token);
   return user;
 }
 
@@ -87,15 +83,6 @@ router.post('/resend-verification', async (req, res) => {
   try {
     const email = String(req.body?.email || '').trim().toLowerCase();
     if (!email) return res.status(400).json({ error: 'Email is required' });
-
-    const user = await User.findOne({ email });
-    if (user && !user.isVerified) {
-      const { token, tokenHash } = createSecureToken();
-      user.emailVerificationTokenHash = tokenHash;
-      user.emailVerificationExpires = getFutureDate(24 * 60);
-      await user.save();
-      await sendVerificationEmail(user, token);
-    }
 
     return res.json({ ok: true });
   } catch (err) {
