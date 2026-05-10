@@ -8,6 +8,8 @@ export const mutations = `
     accountType: String
   ): AuthPayload
   login(email: String!, password: String!): AuthPayload
+  forgotPassword(email: String!): Boolean
+  resetPassword(token: String!, password: String!): Boolean
   toggleFollow(userId: ID!): User
   redeemPoints(pointCost: Int!): RedeemResult
   useToken(code: String!): DiscountToken

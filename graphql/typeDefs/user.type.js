@@ -10,6 +10,10 @@ export const typeDefs = `
 
   type Subscription {
     isActive: Boolean!
+    subscriptionStatus: String
+    subscriptionPlan: String
+    activatedAt: String
+    expiresAt: String
     startDate: String
     endDate: String
     isTrial: Boolean!

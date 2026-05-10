@@ -135,6 +135,10 @@ export function formatUser(user, requestingUserId, followingIds) {
     const sub = obj.subscription;
     obj.subscription = {
       ...sub,
+      subscriptionStatus: sub.subscriptionStatus || (sub.isActive ? 'active' : 'inactive'),
+      subscriptionPlan: sub.subscriptionPlan || null,
+      activatedAt: sub.activatedAt ? sub.activatedAt.toISOString() : null,
+      expiresAt: sub.expiresAt ? sub.expiresAt.toISOString() : null,
       startDate: sub.startDate ? sub.startDate.toISOString() : null,
       endDate: sub.endDate ? sub.endDate.toISOString() : null,
       trialEndsAt: sub.trialEndsAt ? sub.trialEndsAt.toISOString() : null,

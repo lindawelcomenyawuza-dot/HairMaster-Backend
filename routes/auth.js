@@ -33,16 +33,14 @@ async function findOrCreateGoogleUser(profile) {
   if (existingUser) {
     if (!existingUser.googleId) {
       existingUser.googleId = profile.id;
+      await existingUser.save();
     }
-    existingUser.isVerified = true;
-    existingUser.emailVerificationTokenHash = undefined;
-    existingUser.emailVerificationExpires = undefined;
-    await existingUser.save();
     return existingUser;
   }
 
+  const { token, tokenHash } = createSecureToken();
   const password = await bcrypt.hash(`google_${profile.id}`, 10);
-  return User.create({
+  const user = await User.create({
     googleId:    profile.id,
     name:        profile.displayName || email.split('@')[0],
     email,
@@ -50,10 +48,14 @@ async function findOrCreateGoogleUser(profile) {
     password,
     accountType: 'personal',
     avatar:      profile.photos?.[0]?.value || '',
-    isVerified: true,
+    isVerified: false,
+    emailVerificationTokenHash: tokenHash,
+    emailVerificationExpires: getFutureDate(24 * 60),
     consentAccepted: true,
     consentTimestamp: new Date(),
   });
+  await sendVerificationEmail(user, token);
+  return user;
 }
 
 router.get('/verify-email', async (req, res) => {

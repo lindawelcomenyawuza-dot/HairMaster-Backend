@@ -5,8 +5,8 @@ import User from '../../models/User.js';
 import DiscountToken from '../../models/DiscountToken.js';
 import { getUser, requireAuth } from '../../middleware/auth.js';
 import { getObjectKey, getPublicMediaUrl } from '../../utils/media.js';
-import { createSecureToken, getFutureDate } from '../../utils/authTokens.js';
-import { sendVerificationEmail } from '../../utils/email.js';
+import { createSecureToken, getFutureDate, hashToken } from '../../utils/authTokens.js';
+import { sendPasswordResetEmail, sendVerificationEmail } from '../../utils/email.js';
 import { formatDiscountToken, formatUser } from './shared.js';
 
 const tokenTiers = [
@@ -90,6 +90,46 @@ export const resolvers = {
       { expiresIn: '7d' }
     );
     return { token, user: formatUser(user, user._id.toString(), user.followingIds) };
+  },
+
+  forgotPassword: async ({ email }) => {
+    const normalizedEmail = String(email || '').trim().toLowerCase();
+    if (!normalizedEmail) throw new Error('Email is required');
+
+    const user = await User.findOne({ email: normalizedEmail });
+    if (user) {
+      const { token, tokenHash } = createSecureToken();
+      user.passwordResetTokenHash = tokenHash;
+      user.passwordResetExpires = getFutureDate(30);
+      user.passwordResetUsedAt = undefined;
+      await user.save();
+      await sendPasswordResetEmail(user, token);
+    }
+
+    return true;
+  },
+
+  resetPassword: async ({ token, password }) => {
+    const rawToken = String(token || '');
+    const newPassword = String(password || '');
+    if (!rawToken || newPassword.length < 8) {
+      throw new Error('Valid token and password are required');
+    }
+
+    const user = await User.findOne({
+      passwordResetTokenHash: hashToken(rawToken),
+      passwordResetExpires: { $gt: new Date() },
+      passwordResetUsedAt: { $exists: false },
+    });
+    if (!user) throw new Error('Invalid or expired reset token');
+
+    user.password = await bcrypt.hash(newPassword, 10);
+    user.passwordResetTokenHash = undefined;
+    user.passwordResetExpires = undefined;
+    user.passwordResetUsedAt = new Date();
+    await user.save();
+
+    return true;
   },
 
   toggleFollow: async ({ userId }, { req }) => {

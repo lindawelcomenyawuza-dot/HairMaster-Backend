@@ -6,7 +6,11 @@ const paymentSchema = new mongoose.Schema({
   reference: { type: String, required: true, unique: true },
   amount:    { type: Number, required: true },
   currency:  { type: String, default: 'NGN' },
+  type:      { type: String, enum: ['booking', 'subscription'], default: 'booking' },
+  subscriptionPlan: String,
   status:    { type: String, enum: ['pending', 'success', 'failed'], default: 'pending' },
+  verifiedAt: Date,
+  processedAt: Date,
   paystackData: { type: mongoose.Schema.Types.Mixed },
 }, { timestamps: true });
 

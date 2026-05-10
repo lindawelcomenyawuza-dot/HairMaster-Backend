@@ -19,6 +19,10 @@ const paymentRecordSchema = new mongoose.Schema({
 
 const subscriptionSchema = new mongoose.Schema({
   isActive: { type: Boolean, default: false },
+  subscriptionStatus: { type: String, enum: ['inactive', 'active', 'past_due', 'cancelled'], default: 'inactive' },
+  subscriptionPlan: String,
+  activatedAt: Date,
+  expiresAt: Date,
   startDate: Date,
   endDate: Date,
   isTrial: { type: Boolean, default: false },

@@ -8,10 +8,8 @@ import passport from 'passport';
 import schema, { root } from './graphql/schema.js';
 import Post from './models/Post.js';
 import Chat from './models/Chat.js';
-import Payment from './models/Payment.js';
-import Booking from './models/Booking.js';
 import authRoutes from './routes/auth.js';
-import paymentRoutes from './routes/payments.js';
+import paymentRoutes, { applySuccessfulPayment } from './routes/payments.js';
 import uploadRoutes from './routes/upload.js';
 
 const app = express();
@@ -45,20 +43,10 @@ app.post('/paystack/webhook', express.raw({ type: 'application/json' }), async (
     if (hash !== req.headers['x-paystack-signature']) return res.status(401).end();
 
     const event = JSON.parse(req.body);
-    if (event.event === 'charge.success') {
-      const { reference, metadata } = event.data;
-      const existing = await Payment.findOne({ reference });
-      if (existing && existing.status !== 'success') {
-        existing.status = 'success';
-        existing.paystackData = event.data;
-        await existing.save();
-        if (metadata?.bookingId) {
-          await Booking.findByIdAndUpdate(metadata.bookingId, {
-            paymentStatus: 'completed',
-            depositPaid: true,
-          });
-        }
-        console.log(`[Webhook] Payment success: ${reference}`);
+    if (event.event === 'charge.success' || event.event === 'subscription.create' || event.event === 'invoice.payment_success') {
+      const reference = event.data?.reference || event.data?.transaction?.reference;
+      if (reference) {
+        await applySuccessfulPayment({ reference, paystackData: event.data, source: 'root-webhook' });
       }
     }
     return res.sendStatus(200);

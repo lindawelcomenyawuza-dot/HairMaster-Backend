@@ -3,6 +3,7 @@ import crypto from 'crypto';
 import https from 'https';
 import Payment from '../models/Payment.js';
 import Booking from '../models/Booking.js';
+import User from '../models/User.js';
 import { getUser, requireAuth } from '../middleware/auth.js';
 
 const router = express.Router();
@@ -34,12 +35,102 @@ function paystackRequest(method, path, body) {
   });
 }
 
+function addMonths(date, months) {
+  const next = new Date(date);
+  next.setMonth(next.getMonth() + months);
+  return next;
+}
+
+async function activateSubscription(payment, paystackData) {
+  const now = new Date();
+  const expiresAt = addMonths(now, 1);
+  const plan = payment.subscriptionPlan || paystackData?.metadata?.subscriptionPlan || 'monthly';
+
+  const user = await User.findById(payment.userId);
+  if (!user) {
+    console.error(`[Payments] subscription update failed: user not found for payment ${payment.reference}`);
+    return;
+  }
+
+  user.subscription = {
+    ...(user.subscription?.toObject ? user.subscription.toObject() : user.subscription || {}),
+    isActive: true,
+    subscriptionStatus: 'active',
+    subscriptionPlan: plan,
+    activatedAt: now,
+    expiresAt,
+    startDate: now,
+    endDate: expiresAt,
+    isTrial: false,
+    trialEndsAt: undefined,
+    monthlyFee: payment.amount,
+    currency: payment.currency,
+    paymentHistory: [
+      ...((user.subscription?.paymentHistory || []).map(record => (
+        record?.toObject ? record.toObject() : record
+      ))),
+      {
+        amount: payment.amount,
+        currency: payment.currency,
+        date: now,
+        status: 'completed',
+        type: 'subscription',
+      },
+    ],
+  };
+
+  await user.save();
+  console.info(`[Payments] subscription updated: user=${user._id.toString()} reference=${payment.reference}`);
+}
+
+export async function applySuccessfulPayment({ reference, paystackData, source = 'unknown' }) {
+  const payment = await Payment.findOne({ reference });
+  if (!payment) {
+    console.warn(`[Payments] ${source}: payment not found for reference=${reference}`);
+    return null;
+  }
+
+  if (payment.status === 'success' && payment.processedAt) {
+    console.info(`[Payments] ${source}: duplicate success ignored for reference=${reference}`);
+    return payment;
+  }
+
+  payment.status = 'success';
+  payment.paystackData = paystackData || payment.paystackData;
+  payment.verifiedAt = payment.verifiedAt || new Date();
+  payment.processedAt = payment.processedAt || new Date();
+  await payment.save();
+  console.info(`[Payments] ${source}: payment verified reference=${reference}`);
+
+  if (payment.type === 'subscription' || paystackData?.metadata?.type === 'subscription') {
+    await activateSubscription(payment, paystackData);
+  } else if (payment.bookingId || paystackData?.metadata?.bookingId) {
+    await Booking.findByIdAndUpdate(payment.bookingId || paystackData.metadata.bookingId, {
+      paymentStatus: 'completed',
+      depositPaid:   true,
+    });
+    console.info(`[Payments] booking updated reference=${reference}`);
+  }
+
+  console.info(`[Payments] database save successful reference=${reference}`);
+  return payment;
+}
+
+async function verifyPaystackTransaction(reference) {
+  const response = await paystackRequest('GET', `/transaction/verify/${encodeURIComponent(reference)}`);
+  if (!response.status || response.data?.status !== 'success') {
+    console.warn(`[Payments] verification failed reference=${reference}: ${response.message || response.data?.status || 'unknown'}`);
+    return null;
+  }
+  return response.data;
+}
+
 router.post('/initiate', async (req, res) => {
   try {
     const user = getUser(req);
     requireAuth(user);
 
-    const { bookingId, amount, currency = 'NGN', email } = req.body;
+    const { bookingId, amount, currency = 'NGN', email, type = bookingId ? 'booking' : 'subscription', subscriptionPlan = 'monthly' } = req.body;
 
     if (!amount || amount <= 0) {
       return res.status(400).json({ error: 'Invalid amount' });
@@ -55,6 +146,8 @@ router.post('/initiate', async (req, res) => {
       metadata: {
         userId: user.id,
         bookingId: bookingId || null,
+        type,
+        subscriptionPlan: type === 'subscription' ? subscriptionPlan : null,
       },
     });
 
@@ -68,6 +161,8 @@ router.post('/initiate', async (req, res) => {
       reference,
       amount,
       currency,
+      type,
+      subscriptionPlan: type === 'subscription' ? subscriptionPlan : undefined,
       status:   'pending',
       paystackData: paystackResponse.data,
     });
@@ -101,22 +196,7 @@ router.post('/paystack/webhook', express.raw({ type: 'application/json' }), asyn
     if (event.event === 'charge.success') {
       const { reference, metadata } = event.data;
 
-      const existing = await Payment.findOne({ reference });
-      if (!existing) return res.sendStatus(200);
-      if (existing.status === 'success') return res.sendStatus(200);
-
-      existing.status = 'success';
-      existing.paystackData = event.data;
-      await existing.save();
-
-      if (metadata?.bookingId) {
-        await Booking.findByIdAndUpdate(metadata.bookingId, {
-          paymentStatus: 'completed',
-          depositPaid:   true,
-        });
-      }
-
-      console.log(`[Webhook] Payment success: ${reference}`);
+      await applySuccessfulPayment({ reference, paystackData: event.data, source: 'webhook' });
     }
 
     return res.sendStatus(200);
@@ -131,12 +211,23 @@ router.get('/status/:reference', async (req, res) => {
     const user = getUser(req);
     requireAuth(user);
 
-    const payment = await Payment.findOne({
+    let payment = await Payment.findOne({
       reference: req.params.reference,
       userId:    user.id,
     });
 
     if (!payment) return res.status(404).json({ error: 'Payment not found' });
+
+    if (payment.status === 'pending') {
+      const verified = await verifyPaystackTransaction(payment.reference);
+      if (verified) {
+        payment = await applySuccessfulPayment({
+          reference: payment.reference,
+          paystackData: verified,
+          source: 'status-check',
+        }) || payment;
+      }
+    }
 
     return res.json({
       reference:  payment.reference,
@@ -144,6 +235,7 @@ router.get('/status/:reference', async (req, res) => {
       amount:     payment.amount,
       currency:   payment.currency,
       bookingId:  payment.bookingId,
+      type:       payment.type,
       createdAt:  payment.createdAt,
     });
   } catch (err) {
