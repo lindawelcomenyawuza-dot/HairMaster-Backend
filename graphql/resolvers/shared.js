@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import User from '../../models/User.js';
+import Staff from '../../models/Staff.js';
 import { getObjectKey, getPublicMediaUrl } from '../../utils/media.js';
 
 export function formatId(doc) {
@@ -88,9 +89,29 @@ export function formatSalon(user) {
 export function formatSalonStaffMember(staffMember) {
   return {
     id: staffMember._id ? staffMember._id.toString() : staffMember.id,
-    displayName: staffMember.name || 'Unnamed stylist',
-    avatar: getPublicMediaUrl(staffMember.avatar),
+    displayName: staffMember.fullName || staffMember.name || 'Unnamed stylist',
+    avatar: getPublicMediaUrl(staffMember.profileImageKey || staffMember.profileImage || staffMember.avatar),
     role: staffMember.role || 'stylist',
+  };
+}
+
+export function formatBusinessStaffMember(staffMember) {
+  const obj = staffMember.toObject ? staffMember.toObject() : { ...staffMember };
+  return {
+    id: obj._id ? obj._id.toString() : obj.id,
+    businessId: obj.businessId ? obj.businessId.toString() : '',
+    fullName: obj.fullName || obj.name || '',
+    displayName: obj.fullName || obj.name || 'Unnamed stylist',
+    role: obj.role || 'stylist',
+    bio: obj.bio || '',
+    specialties: obj.specialties || [],
+    profileImageKey: obj.profileImageKey || getObjectKey(obj.profileImage),
+    profileImage: getPublicMediaUrl(obj.profileImageKey || obj.profileImage) || '',
+    avatar: getPublicMediaUrl(obj.profileImageKey || obj.profileImage || obj.avatar) || '',
+    phone: obj.phone || '',
+    email: obj.email || '',
+    socialLinks: obj.socialLinks || {},
+    createdAt: obj.createdAt ? obj.createdAt.toISOString() : new Date().toISOString(),
   };
 }
 
@@ -105,7 +126,7 @@ export async function getValidSalonAndStaff(salonId, stylistId) {
   const salon = await User.findOne({ _id: salonId, accountType: 'business' });
   if (!salon) throw new Error('Selected salon was not found');
 
-  const stylist = (salon.staff || []).find(member => member._id?.toString() === stylistId);
+  const stylist = await Staff.findOne({ _id: stylistId, businessId: salon._id });
   if (!stylist) throw new Error('Selected stylist is not registered with this salon');
 
   return { salon, stylist };

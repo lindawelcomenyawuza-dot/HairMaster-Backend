@@ -36,6 +36,8 @@ export const typeDefs = `
     stylistId: String
     stylistName: String
     stylistAvatar: String
+    stylistRole: String
+    stylistBio: String
     salonLogo: String
     location: String
     barberId: String

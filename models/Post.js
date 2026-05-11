@@ -26,6 +26,8 @@ const postSchema = new mongoose.Schema({
   barberId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   salonId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   stylistId: String,
+  stylistRole: String,
+  stylistBio: String,
   locationId: { type: mongoose.Schema.Types.ObjectId, ref: 'Location' },
   bookingId: { type: mongoose.Schema.Types.ObjectId, ref: 'Booking' },
   originalPostId: { type: mongoose.Schema.Types.ObjectId, ref: 'Post' },
