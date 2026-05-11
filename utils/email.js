@@ -1,10 +1,10 @@
 import emailjs from '@emailjs/nodejs';
 
 const DEFAULT_FROM = 'Hair Master <no-reply@hairmaster.app>';
-const DEFAULT_FRONTEND_URL = 'https://hairmaster.com';
+const PRODUCTION_FRONTEND_URL = 'https://hair-master-web.vercel.app';
 
 function getFrontendUrl() {
-  return (process.env.FRONTEND_URL || process.env.WEB_URL || DEFAULT_FRONTEND_URL).trim().replace(/\/+$/, '');
+  return (process.env.FRONTEND_URL || process.env.WEB_URL || PRODUCTION_FRONTEND_URL).trim().replace(/\/+$/, '');
 }
 
 function requireEnv(name) {

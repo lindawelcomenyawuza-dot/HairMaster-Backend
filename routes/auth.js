@@ -125,8 +125,6 @@ router.post('/resend-verification', async (req, res) => {
       const expiresAt = getFutureDate(60);
       user.verificationToken = tokenHash;
       user.verificationTokenExpires = expiresAt;
-      user.emailVerificationTokenHash = tokenHash;
-      user.emailVerificationExpires = expiresAt;
       await user.save();
       await sendVerificationEmail(user, token);
     }

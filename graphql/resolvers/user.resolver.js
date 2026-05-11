@@ -42,8 +42,6 @@ async function createUnverifiedEmailUser({ name, email, password, phone, consent
     authProvider: 'email',
     verificationToken: tokenHash,
     verificationTokenExpires: expiresAt,
-    emailVerificationTokenHash: tokenHash,
-    emailVerificationExpires: expiresAt,
     consentAccepted: true,
     consentTimestamp: new Date(),
   });
@@ -69,6 +67,7 @@ async function verifyEmailToken(rawToken) {
   user.emailVerified = true;
   user.verificationToken = null;
   user.verificationTokenExpires = null;
+  // Clear legacy fields used by older pending verification emails.
   user.emailVerificationTokenHash = undefined;
   user.emailVerificationExpires = undefined;
   await user.save();
