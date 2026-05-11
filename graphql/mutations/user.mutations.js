@@ -7,7 +7,16 @@ export const mutations = `
     consentAccepted: Boolean!
     accountType: String
   ): AuthPayload
+  signup(
+    name: String!
+    email: String!
+    password: String!
+    phone: String
+    consentAccepted: Boolean
+    accountType: String
+  ): SignupPayload
   login(email: String!, password: String!): AuthPayload
+  verifyEmail(token: String!): SignupPayload
   forgotPassword(email: String!): Boolean
   resetPassword(token: String!, password: String!): Boolean
   toggleFollow(userId: ID!): User

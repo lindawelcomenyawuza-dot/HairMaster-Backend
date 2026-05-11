@@ -125,6 +125,8 @@ export function formatUser(user, requestingUserId, followingIds) {
   obj.avatar = getPublicMediaUrl(obj.avatarKey || obj.avatar);
   obj.consentTimestamp = obj.consentTimestamp ? obj.consentTimestamp.toISOString() : null;
   obj.authProvider = obj.authProvider || (obj.googleId ? 'google' : 'email');
+  obj.emailVerified = Boolean(obj.emailVerified || obj.isVerified);
+  obj.isVerified = Boolean(obj.isVerified || obj.emailVerified);
 
   if (requestingUserId && followingIds) {
     obj.isFollowing = followingIds.some(id => id.toString() === obj.id);

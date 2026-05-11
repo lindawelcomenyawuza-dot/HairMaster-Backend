@@ -48,6 +48,9 @@ const userSchema = new mongoose.Schema({
   currency: { type: String, default: 'USD' },
   businessName: String,
   isVerified: { type: Boolean, default: false },
+  emailVerified: { type: Boolean, default: false },
+  verificationToken: String,
+  verificationTokenExpires: Date,
   emailVerificationTokenHash: String,
   emailVerificationExpires: Date,
   passwordResetTokenHash: String,
@@ -72,5 +75,7 @@ const userSchema = new mongoose.Schema({
 
 userSchema.index({ accountType: 1, businessName: 1, location: 1 });
 userSchema.index({ businessName: 'text', name: 'text', location: 'text' });
+userSchema.index({ verificationToken: 1 });
+userSchema.index({ emailVerificationTokenHash: 1 });
 
 export default mongoose.model('User', userSchema);

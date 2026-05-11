@@ -1,4 +1,22 @@
+import emailjs from '@emailjs/nodejs';
+
 const DEFAULT_FROM = 'Hair Master <no-reply@hairmaster.app>';
+const DEFAULT_FRONTEND_URL = 'https://hairmaster.com';
+
+function getFrontendUrl() {
+  return (process.env.FRONTEND_URL || process.env.WEB_URL || DEFAULT_FRONTEND_URL).trim().replace(/\/+$/, '');
+}
+
+function requireEnv(name) {
+  const value = process.env[name]?.trim();
+  if (!value) throw new Error(`Missing required environment variable: ${name}`);
+  return value;
+}
+
+export function buildVerificationLink(token) {
+  const frontendUrl = getFrontendUrl();
+  return `${frontendUrl}/verify?token=${encodeURIComponent(token)}`;
+}
 
 async function sendViaResend({ to, subject, html }) {
   if (!process.env.RESEND_API_KEY) return false;
@@ -36,23 +54,32 @@ export async function sendEmail({ to, subject, html, text }) {
 }
 
 export async function sendVerificationEmail(user, token) {
-  const frontendUrl = (process.env.FRONTEND_URL || process.env.WEB_URL || 'https://hair-master-web.vercel.app').replace(/\/+$/, '');
-  const link = `${frontendUrl}/verify-email?token=${encodeURIComponent(token)}`;
-  await sendEmail({
-    to: user.email,
-    subject: 'Verify your Hair Master email',
-    text: `Verify your Hair Master email: ${link}`,
-    html: `
-      <p>Hi ${user.name},</p>
-      <p>Verify your Hair Master account to unlock the app.</p>
-      <p><a href="${link}">Verify email</a></p>
-      <p>This link expires in 24 hours.</p>
-    `,
-  });
+  const verificationLink = buildVerificationLink(token);
+
+  try {
+    await emailjs.send(
+      requireEnv('EMAILJS_SERVICE_ID'),
+      requireEnv('EMAILJS_TEMPLATE_ID'),
+      {
+        to_name: user.name,
+        to_email: user.email,
+        verification_link: verificationLink,
+      },
+      {
+        publicKey: requireEnv('EMAILJS_PUBLIC_KEY'),
+        privateKey: requireEnv('EMAILJS_PRIVATE_KEY'),
+      }
+    );
+
+    console.info('[EmailJS] Verification email sent');
+  } catch (error) {
+    console.error('[EmailJS] Verification email failed:', error);
+    throw error;
+  }
 }
 
 export async function sendPasswordResetEmail(user, token) {
-  const frontendUrl = (process.env.FRONTEND_URL || process.env.WEB_URL || 'https://hair-master-web.vercel.app').replace(/\/+$/, '');
+  const frontendUrl = getFrontendUrl();
   const link = `${frontendUrl}/reset-password?token=${encodeURIComponent(token)}`;
   await sendEmail({
     to: user.email,

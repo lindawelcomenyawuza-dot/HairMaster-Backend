@@ -5,7 +5,7 @@ import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import User from '../models/User.js';
 import { createSecureToken, getFutureDate, hashToken } from '../utils/authTokens.js';
-import { sendPasswordResetEmail } from '../utils/email.js';
+import { sendPasswordResetEmail, sendVerificationEmail } from '../utils/email.js';
 
 const router = express.Router();
 const PRODUCTION_FRONTEND_URL = 'https://hair-master-web.vercel.app';
@@ -36,6 +36,9 @@ async function findOrCreateGoogleUser(profile) {
     }
     existingUser.authProvider = 'google';
     existingUser.isVerified = true;
+    existingUser.emailVerified = true;
+    existingUser.verificationToken = null;
+    existingUser.verificationTokenExpires = null;
     existingUser.emailVerificationTokenHash = undefined;
     existingUser.emailVerificationExpires = undefined;
     await existingUser.save();
@@ -52,6 +55,7 @@ async function findOrCreateGoogleUser(profile) {
     accountType: 'personal',
     avatar:      profile.photos?.[0]?.value || '',
     isVerified: true,
+    emailVerified: true,
     authProvider: 'google',
     consentAccepted: true,
     consentTimestamp: new Date(),
@@ -59,28 +63,54 @@ async function findOrCreateGoogleUser(profile) {
   return user;
 }
 
-router.get('/verify-email', async (req, res) => {
+async function verifyEmailToken(rawToken) {
+  const token = String(rawToken || '');
+  if (!token) {
+    const err = new Error('Verification token is required');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const tokenHash = hashToken(token);
+  const user = await User.findOne({
+    $or: [
+      { verificationToken: tokenHash, verificationTokenExpires: { $gt: new Date() } },
+      { emailVerificationTokenHash: tokenHash, emailVerificationExpires: { $gt: new Date() } },
+    ],
+  });
+  if (!user) {
+    const err = new Error('Invalid or expired verification token');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  user.isVerified = true;
+  user.emailVerified = true;
+  user.verificationToken = null;
+  user.verificationTokenExpires = null;
+  user.emailVerificationTokenHash = undefined;
+  user.emailVerificationExpires = undefined;
+  await user.save();
+  return user;
+}
+
+router.post('/verify-email', async (req, res) => {
   try {
-    const token = req.query.token;
-    if (!token || typeof token !== 'string') {
-      return res.status(400).json({ error: 'Verification token is required' });
-    }
-
-    const user = await User.findOne({
-      emailVerificationTokenHash: hashToken(token),
-      emailVerificationExpires: { $gt: new Date() },
-    });
-    if (!user) return res.status(400).json({ error: 'Invalid or expired verification token' });
-
-    user.isVerified = true;
-    user.emailVerificationTokenHash = undefined;
-    user.emailVerificationExpires = undefined;
-    await user.save();
-
-    return res.json({ ok: true });
+    const user = await verifyEmailToken(req.body?.token);
+    return res.json({ ok: true, emailVerified: true, userId: user._id.toString() });
   } catch (err) {
     console.error('[Auth] Email verification failed:', err);
-    return res.status(500).json({ error: 'Could not verify email' });
+    return res.status(err.statusCode || 500).json({ error: err.statusCode ? err.message : 'Could not verify email' });
+  }
+});
+
+router.get('/verify-email', async (req, res) => {
+  try {
+    const user = await verifyEmailToken(req.query.token);
+    return res.json({ ok: true, emailVerified: true, userId: user._id.toString() });
+  } catch (err) {
+    console.error('[Auth] Email verification failed:', err);
+    return res.status(err.statusCode || 500).json({ error: err.statusCode ? err.message : 'Could not verify email' });
   }
 });
 
@@ -88,6 +118,18 @@ router.post('/resend-verification', async (req, res) => {
   try {
     const email = String(req.body?.email || '').trim().toLowerCase();
     if (!email) return res.status(400).json({ error: 'Email is required' });
+
+    const user = await User.findOne({ email });
+    if (user && user.authProvider !== 'google' && !user.emailVerified && !user.isVerified) {
+      const { token, tokenHash } = createSecureToken();
+      const expiresAt = getFutureDate(60);
+      user.verificationToken = tokenHash;
+      user.verificationTokenExpires = expiresAt;
+      user.emailVerificationTokenHash = tokenHash;
+      user.emailVerificationExpires = expiresAt;
+      await user.save();
+      await sendVerificationEmail(user, token);
+    }
 
     return res.json({ ok: true });
   } catch (err) {
@@ -228,7 +270,14 @@ router.get(
     }
 
     const token = jwt.sign(
-      { id: user._id.toString(), email: user.email, accountType: user.accountType, isVerified: user.isVerified, authProvider: user.authProvider || (user.googleId ? 'google' : 'email') },
+      {
+        id: user._id.toString(),
+        email: user.email,
+        accountType: user.accountType,
+        isVerified: user.isVerified,
+        emailVerified: user.emailVerified || user.isVerified,
+        authProvider: user.authProvider || (user.googleId ? 'google' : 'email'),
+      },
       process.env.JWT_SECRET,
       { expiresIn: '7d' }
     );

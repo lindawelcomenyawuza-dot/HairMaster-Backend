@@ -13,5 +13,8 @@ export function getUser(req) {
 
 export function requireAuth(user) {
   if (!user) throw new Error('Authentication required');
+  if (user.authProvider !== 'google' && user.isVerified === false && user.emailVerified !== true) {
+    throw new Error('Email verification required');
+  }
   return user;
 }

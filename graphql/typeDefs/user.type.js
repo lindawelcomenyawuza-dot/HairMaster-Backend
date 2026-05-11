@@ -49,6 +49,7 @@ export const typeDefs = `
     currency: String
     businessName: String
     isVerified: Boolean
+    emailVerified: Boolean
     authProvider: String
     consentAccepted: Boolean
     consentTimestamp: String
@@ -69,6 +70,12 @@ export const typeDefs = `
   type AuthPayload {
     token: String!
     user: User!
+  }
+
+  type SignupPayload {
+    success: Boolean!
+    message: String!
+    user: User
   }
 
   type DiscountToken {

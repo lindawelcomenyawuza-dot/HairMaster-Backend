@@ -16,6 +16,65 @@ const tokenTiers = [
   { label: 'Platinum', pointCost: 1000, discount: 25, description: 'Get 25% off your next booking' },
 ];
 
+async function createUnverifiedEmailUser({ name, email, password, phone, consentAccepted = true, accountType }) {
+  if (consentAccepted !== true) throw new Error('Terms and consent must be accepted');
+  if (phone !== undefined && !String(phone).trim()) throw new Error('Phone number is required');
+
+  const normalizedEmail = email.trim().toLowerCase();
+  const existing = await User.findOne({ email: normalizedEmail });
+  if (existing) throw new Error('Email already in use');
+
+  const hashed = await bcrypt.hash(password, 10);
+  const { token, tokenHash } = createSecureToken();
+  const expiresAt = getFutureDate(60);
+  const user = new User({
+    name,
+    email: normalizedEmail,
+    phone: phone ? phone.trim() : '',
+    password: hashed,
+    accountType: accountType || 'personal',
+    avatar: '',
+    bio: '',
+    followers: 0,
+    following: 0,
+    isVerified: false,
+    emailVerified: false,
+    authProvider: 'email',
+    verificationToken: tokenHash,
+    verificationTokenExpires: expiresAt,
+    emailVerificationTokenHash: tokenHash,
+    emailVerificationExpires: expiresAt,
+    consentAccepted: true,
+    consentTimestamp: new Date(),
+  });
+  await user.save();
+  await sendVerificationEmail(user, token);
+  return user;
+}
+
+async function verifyEmailToken(rawToken) {
+  const token = String(rawToken || '');
+  if (!token) throw new Error('Verification token is required');
+
+  const tokenHash = hashToken(token);
+  const user = await User.findOne({
+    $or: [
+      { verificationToken: tokenHash, verificationTokenExpires: { $gt: new Date() } },
+      { emailVerificationTokenHash: tokenHash, emailVerificationExpires: { $gt: new Date() } },
+    ],
+  });
+  if (!user) throw new Error('Invalid or expired verification token');
+
+  user.isVerified = true;
+  user.emailVerified = true;
+  user.verificationToken = null;
+  user.verificationTokenExpires = null;
+  user.emailVerificationTokenHash = undefined;
+  user.emailVerificationExpires = undefined;
+  await user.save();
+  return user;
+}
+
 export const resolvers = {
   me: async (_, { req }) => {
     const authUser = getUser(req);
@@ -49,34 +108,17 @@ export const resolvers = {
   tokenTiers: async () => tokenTiers,
 
   register: async ({ name, email, password, phone, consentAccepted, accountType }) => {
-    if (!consentAccepted) throw new Error('Terms and consent must be accepted');
-    if (!phone || !phone.trim()) throw new Error('Phone number is required');
-
-    const normalizedEmail = email.trim().toLowerCase();
-    const existing = await User.findOne({ email: normalizedEmail });
-    if (existing) throw new Error('Email already in use');
-    const hashed = await bcrypt.hash(password, 10);
-    const { token, tokenHash } = createSecureToken();
-    const user = new User({
-      name,
-      email: normalizedEmail,
-      phone: phone.trim(),
-      password: hashed,
-      accountType: accountType || 'personal',
-      avatar: '',
-      bio: '',
-      followers: 0,
-      following: 0,
-      isVerified: false,
-      authProvider: 'email',
-      emailVerificationTokenHash: tokenHash,
-      emailVerificationExpires: getFutureDate(24 * 60),
-      consentAccepted: true,
-      consentTimestamp: new Date(),
-    });
-    await user.save();
-    await sendVerificationEmail(user, token);
+    const user = await createUnverifiedEmailUser({ name, email, password, phone, consentAccepted, accountType });
     return { token: '', user: formatUser(user, user._id.toString(), []) };
+  },
+
+  signup: async ({ name, email, password, phone, consentAccepted, accountType }) => {
+    const user = await createUnverifiedEmailUser({ name, email, password, phone, consentAccepted, accountType });
+    return {
+      success: true,
+      message: 'Signup successful. Please check your email to verify your account.',
+      user: formatUser(user, user._id.toString(), []),
+    };
   },
 
   login: async ({ email, password }) => {
@@ -84,12 +126,31 @@ export const resolvers = {
     if (!user) throw new Error('Invalid credentials');
     const valid = await bcrypt.compare(password, user.password);
     if (!valid) throw new Error('Invalid credentials');
+    if (user.authProvider !== 'google' && !user.emailVerified && !user.isVerified) {
+      throw new Error('Please verify your email before logging in');
+    }
     const token = jwt.sign(
-      { id: user._id.toString(), email: user.email, accountType: user.accountType, isVerified: user.isVerified, authProvider: user.authProvider || 'email' },
+      {
+        id: user._id.toString(),
+        email: user.email,
+        accountType: user.accountType,
+        isVerified: user.isVerified,
+        emailVerified: user.emailVerified || user.isVerified,
+        authProvider: user.authProvider || 'email',
+      },
       process.env.JWT_SECRET,
       { expiresIn: '7d' }
     );
     return { token, user: formatUser(user, user._id.toString(), user.followingIds) };
+  },
+
+  verifyEmail: async ({ token }) => {
+    const user = await verifyEmailToken(token);
+    return {
+      success: true,
+      message: 'Email verified successfully. You can now log in.',
+      user: formatUser(user, user._id.toString(), user.followingIds),
+    };
   },
 
   forgotPassword: async ({ email }) => {
