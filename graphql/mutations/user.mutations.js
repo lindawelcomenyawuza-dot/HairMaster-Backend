@@ -18,7 +18,7 @@ export const mutations = `
   login(email: String!, password: String!): AuthPayload
   verifyEmail(token: String!): SignupPayload
   forgotPassword(email: String!): Boolean
-  resetPassword(token: String!, password: String!): Boolean
+  resetPassword(token: String!, newPassword: String!): Boolean
   toggleFollow(userId: ID!): User
   redeemPoints(pointCost: Int!): RedeemResult
   useToken(code: String!): DiscountToken

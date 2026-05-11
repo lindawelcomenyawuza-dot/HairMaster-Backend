@@ -158,9 +158,11 @@ export const resolvers = {
 
     const user = await User.findOne({ email: normalizedEmail });
     if (user) {
-      const { token, tokenHash } = createSecureToken();
-      user.passwordResetTokenHash = tokenHash;
-      user.passwordResetExpires = getFutureDate(30);
+      const { token } = createSecureToken();
+      user.resetPasswordToken = token;
+      user.resetPasswordExpires = getFutureDate(60);
+      user.passwordResetTokenHash = undefined;
+      user.passwordResetExpires = undefined;
       user.passwordResetUsedAt = undefined;
       await user.save();
       await sendPasswordResetEmail(user, token);
@@ -169,24 +171,25 @@ export const resolvers = {
     return true;
   },
 
-  resetPassword: async ({ token, password }) => {
+  resetPassword: async ({ token, newPassword }) => {
     const rawToken = String(token || '');
-    const newPassword = String(password || '');
-    if (!rawToken || newPassword.length < 8) {
+    const password = String(newPassword || '');
+    if (!rawToken || password.length < 8) {
       throw new Error('Valid token and password are required');
     }
 
     const user = await User.findOne({
-      passwordResetTokenHash: hashToken(rawToken),
-      passwordResetExpires: { $gt: new Date() },
-      passwordResetUsedAt: { $exists: false },
+      resetPasswordToken: rawToken,
+      resetPasswordExpires: { $gt: new Date() },
     });
     if (!user) throw new Error('Invalid or expired reset token');
 
-    user.password = await bcrypt.hash(newPassword, 10);
+    user.password = await bcrypt.hash(password, 10);
+    user.resetPasswordToken = undefined;
+    user.resetPasswordExpires = undefined;
     user.passwordResetTokenHash = undefined;
     user.passwordResetExpires = undefined;
-    user.passwordResetUsedAt = new Date();
+    user.passwordResetUsedAt = undefined;
     await user.save();
 
     return true;

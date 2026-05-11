@@ -80,16 +80,26 @@ export async function sendVerificationEmail(user, token) {
 
 export async function sendPasswordResetEmail(user, token) {
   const frontendUrl = getFrontendUrl();
-  const link = `${frontendUrl}/reset-password?token=${encodeURIComponent(token)}`;
-  await sendEmail({
-    to: user.email,
-    subject: 'Reset your Hair Master password',
-    text: `Reset your Hair Master password: ${link}`,
-    html: `
-      <p>Hi ${user.name},</p>
-      <p>Use this link to reset your Hair Master password.</p>
-      <p><a href="${link}">Reset password</a></p>
-      <p>This link expires in 30 minutes and can only be used once.</p>
-    `,
-  });
+  const resetLink = `${frontendUrl}/reset-password?token=${encodeURIComponent(token)}`;
+
+  try {
+    await emailjs.send(
+      requireEnv('EMAILJS_SERVICE_ID'),
+      requireEnv('EMAILJS_RESET_TEMPLATE_ID'),
+      {
+        to_name: user.name,
+        to_email: user.email,
+        reset_link: resetLink,
+      },
+      {
+        publicKey: requireEnv('EMAILJS_PUBLIC_KEY'),
+        privateKey: requireEnv('EMAILJS_PRIVATE_KEY'),
+      }
+    );
+
+    console.info('[EmailJS] Password reset email sent');
+  } catch (error) {
+    console.error('[EmailJS] Password reset email failed:', error);
+    throw error;
+  }
 }

@@ -53,6 +53,8 @@ const userSchema = new mongoose.Schema({
   verificationTokenExpires: Date,
   emailVerificationTokenHash: String,
   emailVerificationExpires: Date,
+  resetPasswordToken: String,
+  resetPasswordExpires: Date,
   passwordResetTokenHash: String,
   passwordResetExpires: Date,
   passwordResetUsedAt: Date,
@@ -77,5 +79,6 @@ userSchema.index({ accountType: 1, businessName: 1, location: 1 });
 userSchema.index({ businessName: 'text', name: 'text', location: 'text' });
 userSchema.index({ verificationToken: 1 });
 userSchema.index({ emailVerificationTokenHash: 1 });
+userSchema.index({ resetPasswordToken: 1 });
 
 export default mongoose.model('User', userSchema);

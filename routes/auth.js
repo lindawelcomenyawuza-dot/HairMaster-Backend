@@ -143,9 +143,11 @@ router.post('/forgot-password', async (req, res) => {
 
     const user = await User.findOne({ email });
     if (user) {
-      const { token, tokenHash } = createSecureToken();
-      user.passwordResetTokenHash = tokenHash;
-      user.passwordResetExpires = getFutureDate(30);
+      const { token } = createSecureToken();
+      user.resetPasswordToken = token;
+      user.resetPasswordExpires = getFutureDate(60);
+      user.passwordResetTokenHash = undefined;
+      user.passwordResetExpires = undefined;
       user.passwordResetUsedAt = undefined;
       await user.save();
       await sendPasswordResetEmail(user, token);
@@ -167,16 +169,17 @@ router.post('/reset-password', async (req, res) => {
     }
 
     const user = await User.findOne({
-      passwordResetTokenHash: hashToken(token),
-      passwordResetExpires: { $gt: new Date() },
-      passwordResetUsedAt: { $exists: false },
+      resetPasswordToken: token,
+      resetPasswordExpires: { $gt: new Date() },
     });
     if (!user) return res.status(400).json({ error: 'Invalid or expired reset token' });
 
     user.password = await bcrypt.hash(password, 10);
+    user.resetPasswordToken = undefined;
+    user.resetPasswordExpires = undefined;
     user.passwordResetTokenHash = undefined;
     user.passwordResetExpires = undefined;
-    user.passwordResetUsedAt = new Date();
+    user.passwordResetUsedAt = undefined;
     await user.save();
 
     return res.json({ ok: true });
